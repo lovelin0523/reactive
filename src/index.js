@@ -16,34 +16,17 @@ class Reactive {
 			el = document.body;
 		}
 		this.$el = el;
-		this.compile()
+		this._compile()
 		return this;
 	}
 
 	/**
 	 * 编译
 	 */
-	compile(){
+	_compile(){
 		//匹配{{}}的正则
 		let reg = /\{\{(.*)\}\}/g
-		let html = this.$el.outerHTML;
-		let length = 0;
-		if(html.match(reg)){
-			length = html.match(reg).length;
-		}
-		for(var i = 0;i<length;i++){
-			let res = reg.exec(html)
-			let index = res.index;
-			let key = res[1]
-			let keys = key.split('.')
-			let value = this[keys[0]]
-			for(var j = 1;j<keys.length;j++){
-				var k = value;
-				value = k[keys[j]];
-			}
-			html = html.substring(0,index) + JSON.stringify(value) + html.substring(index+res[0].length)
-		}
-		this.$el.outerHTML = html;
+		
 	}
 	
 	/**
@@ -128,6 +111,10 @@ class Reactive {
 					}
 				},
 				set: (target, key, value) => {
+					if(Reactive._getUnObserveProperties().includes(key)){
+						Reflect.set(target, key, value);
+						return true;
+					}
 					var watchKey = parentKey ? parentKey + '.' + key : key;
 					let oldValue = Reflect.get(target, key);
 					let oldTarget = undefined;
@@ -141,6 +128,7 @@ class Reactive {
 						return true;
 					}
 					Reflect.set(target, key, value);
+					instance._compile()
 					//watch回调
 					var keys = Reactive._parseWatchKey(watchKey);
 					keys.forEach((item, index) => {
