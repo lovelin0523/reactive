@@ -7,21 +7,30 @@
 	</head>
 	<body>
 		<div id="app">
-			<input type="text" value="{{name}}">
-			<p>{{mobile.name}}</p>
-			<p>{{mobile.address.name}}</p>
+			{{name}}
+			<button onclick="change()">change</button>
 		</div>
-		<script type="module">
-			import Reactive from "../src/index.js"
+		<script src="../dist/reactive.js" type="text/javascript" charset="utf-8"></script>
+		<script>
 			let data = {
 				name:'凌凯',
 				mobile:{
-					name:'iphone12',
+					name:'iphone',
 					price:6799,
 					address:{
 						name:'china'
-					}
-				}
+					},
+					numbers:[0,1,2],
+					children:[
+						{
+							name:'iphone12'
+						},
+						{
+							name:'iphone11'
+						}
+					]
+				},
+				gender:['男','女']
 			}
 			
 			const app = Reactive.createApp({
@@ -41,6 +50,9 @@
 				}
 			}).mount('#app')
 			
+			function change(){
+				app.name = '缪海龙';
+			}
 		</script>
 	</body>
 </html>
