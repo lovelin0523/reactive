@@ -11,6 +11,12 @@ class Reactive {
 		this.$data = null;
 		this.$methods = null;
 		this.$watch = null;
+		this.$beforeMount = null;
+		this.$mounted = null;
+		this.$beforeCreate = null;
+		this.$created = null;
+		this.$updated = null;
+		this.$beforeUpdate = null;
 	}
 
 	/**
@@ -18,95 +24,63 @@ class Reactive {
 	 * @param {Object} selector
 	 */
 	mount(selector) {
+		this.$beforeMount.call(this)
 		//获取挂载元素
 		let el = document.querySelector(selector)
 		if (!el) {
 			el = document.body;
 		}
 		this.$el = el;
-		//创建虚拟dom
-		this.$vnode = this._createVNode(el)
-		this._vnode = this._createVNode(el)
-		this._patch(null,this.$vnode)
+		//创建虚拟dom并渲染真实数据
+		this.$vnode = this._updateDoms(this._createVNode(el))
+		this._vnode = this._updateDoms(this._createVNode(el))
+		//虚拟dom的el插入页面
+		this.$el.parentNode.insertBefore(this._vnode.el,this.$el)
+		//移除原来的
+		this.$el.parentNode.removeChild(this.$el)
+		//更新$el
+		this.$el = this._vnode.el;
+		this.$mounted.call(this)
 		return this;
 	}
 	
 	/**
-	 * 根据虚拟dom生成dom元素挂载到页面
+	 * 监听到数据更新对dom操作
 	 */
-	_patch(oldVnode,vnode){
-		if(oldVnode){
-			if(vnode){
-				//更新vnode，进一步处理
-				this._patchVnode(oldVnode,vnode)
-			}else{
-				//删除dom
-				oldVnode.el.remove()
-			}
+	_patch(){
+		this.$vnode = this._updateDoms(this.$vnode)
+		if(!VNode._equal(this.$vnode,this._vnode)){
+			this._vnode = this._updateDoms(this._vnode)
+			this.$el.parentNode.insertBefore(this._vnode.el,this.$el)
+			this.$el.parentNode.removeChild(this.$el)
+			this.$el = this._vnode.el;
 		}else {
-			if(vnode){
-				//第一次渲染
-				this._createElm(vnode)
-			}
+			this._patchVnode(this._vnode,this.$vnode)
 		}
 	}
 	
 	/**
-	 * 比对新旧vnode进行dom更新
+	 * 比对同一级子元素vnode
 	 * @param {Object} oldVnode
 	 * @param {Object} vnode
 	 */
 	_patchVnode(oldVnode,vnode){
-		this._updateDoms(vnode,this)
-		if(!VNode._equal(oldVnode,vnode) && oldVnode.id === vnode.id){
-			if(vnode.parent){
-				oldVnode.parent.el.insertBefore(vnode.el,oldVnode.el)
-				oldVnode.parent.el.removeChild(oldVnode.el)
-				oldVnode.el = vnode.el
-			}else {//是根节点
-				this.$el.parentNode.insertBefore(vnode.el,this.$el)
-				//移除原来的
-				this.$el.parentNode.removeChild(this.$el)
-				//更新$el
-				this.$el = vnode.el;
-			}
-		}else {
-			for(var i = 0;i<oldVnode.children.length;i++){
-				for(var j = 0;j<vnode.children.length;j++){
-					var oVn = oldVnode.children[i]
-					var vn = vnode.children[j]
-					if(!VNode._equal(vn,oVn) && vn.id === oVn.id){
-						console.log('进入')
-						oVn.parent.el.insertBefore(vn.el,oVn.el)
-						oVn.parent.el.removeChild(oVn.el)
-						oVn.el = vn.el
-					}
+		for(var i = 0;i<oldVnode.children.length;i++){
+			for(var j = 0;j<vnode.children.length;j++){
+				if(!VNode._equal(vnode.children[j],oldVnode.children[i]) && vnode.children[j].id === oldVnode.children[i].id){
+					let el =  vnode.children[j].el.cloneNode(true)
+					oldVnode.el.insertBefore(el,oldVnode.children[i].el)
+					oldVnode.children[i].el.remove()
+					oldVnode.children[i].el = el
 				}
+				this._patchVnode(oldVnode.children[i],vnode.children[j])
 			}
-		}
-	}
-	
-	/**
-	 * 根据虚拟dom动态创建真实dom节点
-	 */
-	_createElm(vnode){
-		this._updateDoms(vnode,this)
-		//如果不是根节点
-		if(vnode.parent){
-			vnode.parent.el.appendChild(vnode.el)
-		}else {//是根节点
-			this._updateDoms(this._vnode)
-			//虚拟dom的el插入页面
-			this.$el.parentNode.insertBefore(vnode.el,this.$el)
-			//移除原来的
-			this.$el.parentNode.removeChild(this.$el)
-			//更新$el
-			this.$el = vnode.el;
 		}
 	}
 	
 	/**
 	 * 更新指定虚拟dom树及其子元素的el
+	 * @param {Object} vnode
 	 */
 	_updateDoms(vnode){
 		//根据虚拟dom递归创建真实节点以及其子节点（更新虚拟dom的el）
@@ -119,6 +93,7 @@ class Reactive {
 			})
 		}
 		f(vnode)
+		return vnode
 	}
 
 	/**
@@ -127,7 +102,7 @@ class Reactive {
 	 * @param {Object} index
 	 * @param {Object} parent
 	 */
-	_createVNode($el,index, parent) {
+	_createVNode($el,index, parent,root) {
 		let children = [];
 		let text = VNode._getNodeText($el)
 		let nodeType = $el.nodeType;
@@ -147,15 +122,45 @@ class Reactive {
 		}
 		index = index?`${index}`:'0'
 		let id = parent?'vn_'+(parent.id.substring(3))+'_'+index:'vn_'+index;
-		let vnode = new VNode(id,tag, $el, children, text, data, parent, nodeType, attrs);
+		let vnode = new VNode(id,tag, $el, children, text, data, parent,root, nodeType, attrs);
+		if(!root){
+			root = vnode
+		}
 		//获取子节点
 		let childs = $el.childNodes;
 		// 深度优先算法
 		for (let i = 0; i < childs.length; i++) {
-			let childNode = this._createVNode(childs[i],i,vnode);
+			let childNode = this._createVNode(childs[i],i,vnode,root);
 			vnode.children.push(childNode);
 		}
 		return vnode;
+	}
+	
+	/**
+	 * 监听数据变更进行处理
+	 * @param {Object} keys
+	 * @param {Object} key
+	 * @param {Object} value
+	 */
+	_observer(keys,key,value){
+		//方法发生变化
+		if(keys[0] == '$methods'){
+			//更新挂载在实例下的方法
+			Object.keys(this.$methods).forEach(key => {
+				this[key] = this.$methods[key]
+			})
+		}
+		//源数据发生变化
+		if(keys[0] == '$data'){
+			//更新挂载在实例下的数据
+			Object.keys(this.$data).forEach(key => {
+				this[key] = this.$data[key]
+			})
+		}
+		//dom变更
+		if(this.$vnode){
+			this._patch()
+		}
 	}
 
 	/**
@@ -167,6 +172,15 @@ class Reactive {
 		let instance = new Reactive()
 		//校验参数
 		let opt = Reactive._validator(options)
+		//配置钩子函数
+		instance.$beforeCreate = opt.beforeCreate;
+		instance.$created = opt.created;
+		instance.$beforeUpdate = opt.beforeUpdate;
+		instance.$updated = opt.updated;
+		instance.$beforeMount = opt.beforeMount
+		instance.$mounted = opt.mounted;
+		//执行钩子函数beforeCreate
+		instance.$beforeCreate.call(instance)
 		//配置watch监听参数
 		instance.$watch = opt.watch;
 		//配置methods方法参数
@@ -175,14 +189,16 @@ class Reactive {
 		instance.$data = opt.data;
 		//将data直接挂载在实例上
 		Object.keys(instance.$data).forEach(key => {
-			instance[key] = opt.data[key]
+			instance[key] = instance.$data[key]
 		})
 		//将methods直接挂载在实例上
 		Object.keys(instance.$methods).forEach(key => {
-			instance[key] = opt.methods[key]
+			instance[key] = instance.$methods[key]
 		})
 		//进行proxy代理
 		instance = Reactive._proxy(instance)
+		//执行钩子函数created
+		instance.$created.call(instance)
 		//返回实例
 		return instance
 	}
@@ -191,7 +207,8 @@ class Reactive {
 	 * 获取不需要监听的属性数组
 	 */
 	static _getUnObserveProperties() {
-		return ['$el', '$watch', '$methods', 'mount', '$vnode','_vnode']
+		return ['$el', '$vnode','_vnode', '$watch','mount','_patch','_patchVnode','_updateDoms','_createVNode','_observer',
+		'$beforeCreate','$created','$beforeMount','$mounted','$beforeUpdate','$updated']
 	}
 
 	/**
@@ -202,20 +219,42 @@ class Reactive {
 		let opt = {
 			data: {},
 			watch: {},
-			methods: {}
+			methods: {},
+			mounted:function(){},
+			beforeCreate:function(){},
+			created:function(){},
+			beforeMount:function(){},
+			mounted:function(){},
+			beforeUpdate:function(){},
+			updated:function(){}
 		}
 		if (typeof options == 'object' && options) {
-
 			if (typeof options.data == 'object' && options.data) {
 				opt.data = options.data;
 			}
-
 			if (typeof options.watch == 'object' && options.watch) {
 				opt.watch = options.watch;
 			}
-
 			if (typeof options.methods == 'object' && options.methods) {
 				opt.methods = options.methods;
+			}
+			if(typeof options.beforeMount == 'function' && options.beforeMount){
+				opt.beforeMount = options.beforeMount;
+			}
+			if(typeof options.mounted == 'function' && options.mounted){
+				opt.mounted = options.mounted;
+			}
+			if(typeof options.beforeCreate == 'function' && options.beforeCreate){
+				opt.beforeCreate = options.beforeCreate;
+			}
+			if(typeof options.created == 'function' && options.created){
+				opt.created = options.created;
+			}
+			if(typeof options.beforeUpdate == 'function' && options.beforeUpdate){
+				opt.beforeUpdate = options.beforeUpdate;
+			}
+			if(typeof options.updated == 'function' && options.updated){
+				opt.updated = options.updated;
 			}
 		}
 		return opt
@@ -256,11 +295,15 @@ class Reactive {
 					if (oldValue === value) {
 						return true;
 					}
+					//更新之前回调钩子函数
+					instance.$beforeUpdate.call(instance,key,oldValue,value,(target instanceof Reactive)?undefined:target)
+					//更新数据
 					Reflect.set(target, key, value);
-					//dom变更
-					instance._patch(instance._vnode,instance.$vnode)
-					//watch回调
+					//watch键名解析
 					var keys = Reactive._parseWatchKey(watchKey);
+					//监听
+					instance._observer(keys,key,value)
+					//回调
 					keys.forEach((item, index) => {
 						if (typeof(instance.$watch) == 'object' && instance.$watch[item] && typeof(instance.$watch[item]) ==
 							'function') {
@@ -273,6 +316,8 @@ class Reactive {
 							}
 						}
 					})
+					//更新完毕回调调用钩子函数
+					instance.$updated.call(instance,key,oldValue,value,(target instanceof Reactive)?undefined:target)
 					return true;
 				}
 			}
