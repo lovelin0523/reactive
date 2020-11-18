@@ -33,7 +33,7 @@ class Reactive {
 		this.$el = el;
 		//创建虚拟dom并渲染真实数据
 		this.$vnode = this._updateDoms(this._createVNode(el))
-		this._vnode = this._updateDoms(this._createVNode(el))
+		this._vnode = this.$vnode.clone()
 		//虚拟dom的el插入页面
 		this.$el.parentNode.insertBefore(this._vnode.el,this.$el)
 		//移除原来的

@@ -8,7 +8,7 @@
 	<body>
 		<div id="app">
 			<p>{{user}}</p>
-			<div  lk:for="list">
+			<div lk:for="list">
 				<p>{{item}}{{index}}</p>
 			</div>
 			<button @click="change">CHANGE</button>
@@ -18,7 +18,7 @@
 			const app = Reactive.createApp({
 				data:{
 					list:['春花秋月何时了，','往事知多少？','小楼昨夜又东风，','故国不堪回首月明中。','雕栏玉砌应犹在，','只是朱颜改。','问君能有几多愁？','恰似一江春水向东流。'],
-					user:''
+					
 				},
 				methods:{
 					change(e){
@@ -64,8 +64,6 @@
 					console.log('%c已经发生变化的数据：','font-weight:bold;',key,oldValue,newValue,target)
 				}
 			}).mount('#app')
-			
-			app.$data.user = '凌凯'
 		</script>
 	</body>
 </html>

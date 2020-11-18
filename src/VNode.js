@@ -177,7 +177,7 @@ class VNode {
 	}
 
 	/**
-	 * 复制vnode
+	 * 复制vnode，id会变
 	 * @param {Object} index
 	 */
 	_clone(index,parent,data) {
@@ -188,6 +188,18 @@ class VNode {
 		var vnode = new VNode(this.id + '_copy_' + index, this.tag, this.el.cloneNode(true),[], this.text, newData, parent,this.root, this.nodeType,this.attrs);
 		this.children.forEach((child,index)=>{
 			var childNode = child._clone(index,vnode)
+			vnode.children.push(childNode)
+		})
+		return vnode
+	}
+	
+	/**
+	 * 完全复制
+	 */
+	clone(){
+		var vnode = new VNode(this.id, this.tag, this.el.cloneNode(true),[], this.text,this.data, this.parent,this.root,this.nodeType,this.attrs);
+		this.children.forEach((child,index)=>{
+			var childNode = child.clone()
 			vnode.children.push(childNode)
 		})
 		return vnode
