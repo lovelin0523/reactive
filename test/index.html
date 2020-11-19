@@ -7,61 +7,25 @@
 	</head>
 	<body>
 		<div id="app">
-			<p>{{user}}</p>
-			<div lk:for="list">
-				<p>{{item}}{{index}}</p>
-			</div>
-			<button @click="change">CHANGE</button>
+			<p>{{count++}}</p>
+			<button @click="change">Button</button>
 		</div>
 		<script src="../dist/reactive.js" type="text/javascript" charset="utf-8"></script>
 		<script>
 			const app = Reactive.createApp({
 				data:{
-					list:['春花秋月何时了，','往事知多少？','小楼昨夜又东风，','故国不堪回首月明中。','雕栏玉砌应犹在，','只是朱颜改。','问君能有几多愁？','恰似一江春水向东流。'],
-					
+					count:1,
+					show:true
 				},
-				methods:{
-					change(e){
-						this.user = '缪海龙'
+				watch:{
+					show(newValue,oldValue){
+						console.log(newValue,oldValue)
 					}
 				},
-				beforeCreate(){
-					console.log('%c-------------------------------------------','color:#ff3300;')
-					console.log('%cbeforeCreate','color:#07C160;font-size:18px;')
-					console.log('%cReactive实例刚刚创建，data、虚拟dom、methods、watch等尚未建立和赋值，代理仍未执行','font-weight:bold;')
-					console.log('%cReactive实例','font-weight:bold',this)
-				},
-				created(){
-					console.log('%c-------------------------------------------','color:#ff3300;')
-					console.log('%ccreated','color:#07C160;font-size:18px;')
-					console.log('%cReactive实例创建完成，data、methods、watch已经建立和赋值，代理已经执行，虚拟dom尚未赋值，dom视图尚未渲染','font-weight:bold;')
-					console.log('%cReactive实例','font-weight:bold',this)
-				},
-				beforeMount(){
-					console.log('%c-------------------------------------------','color:#ff3300;')
-					console.log('%cbeforeMount','color:#07C160;font-size:18px;')
-					console.log('%cReactive完成创建后，mount方法刚刚开始执行，此时无法获取新的虚拟dom，视图未渲染','font-weight:bold;')
-					console.log('%cReactive实例','font-weight:bold',this)
-				},
-				mounted(){
-					console.log('%c-------------------------------------------','color:#ff3300;')
-					console.log('%cmounted','color:#07C160;font-size:18px;')
-					console.log('%cReactive视图层初次渲染完毕，此时虚拟dom树已创建','font-weight:bold;')
-					console.log('%cReactive实例','font-weight:bold',this)
-				},
-				beforeUpdate(key,oldValue,newValue,target){
-					console.log('%c-------------------------------------------','color:#ff3300;')
-					console.log('%cbeforeUpdate','color:#07C160;font-size:18px;')
-					console.log('%cReactive数据更新之前触发，此时数据即将更新但未更新，视图层还未变化','font-weight:bold;')
-					console.log('%cReactive实例','font-weight:bold',this)
-					console.log('%c即将发生变化的数据：','font-weight:bold;',key,oldValue,newValue,target)
-				},
-				updated(key,oldValue,newValue,target){
-					console.log('%c-------------------------------------------','color:#ff3300;')
-					console.log('%cupdated','color:#07C160;font-size:18px;')
-					console.log('%cReactive数据更新完成，视图层已经变化并且重新渲染完毕','font-weight:bold;')
-					console.log('%cReactive实例','font-weight:bold',this)
-					console.log('%c已经发生变化的数据：','font-weight:bold;',key,oldValue,newValue,target)
+				methods:{
+					change(){
+						
+					}
 				}
 			}).mount('#app')
 		</script>
