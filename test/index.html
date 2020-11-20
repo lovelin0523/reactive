@@ -19,25 +19,23 @@
 		<script src="../dist/reactive.js" type="text/javascript" charset="utf-8"></script>
 		<script>
 			const app = Reactive.createApp({
-				data:{
-					areas:['北美洲','大洋洲','南美洲','欧洲','亚洲','非洲','南极洲'],
-					show:true,
-					areas2:['North America','Oceania','South America','European','Asia','Africa','Antarctica']
+				data: {
+					areas: ['北美洲', '大洋洲', '南美洲', '欧洲', '亚洲', '非洲', '南极洲'],
+					value:'Reactive',
+					show: true,
+					areas2: ['North America', 'Oceania', 'South America', 'European', 'Asia', 'Africa', 'Antarctica']
 				},
-				mounted(){
-					console.log()
-				},
-				watch:{
-					show(newValue,oldValue){
-						console.log(newValue,oldValue)
+				watch: {
+					show(newValue, oldValue) {
+						console.log(newValue, oldValue)
 					},
-					
+
 				},
-				methods:{
-					change(e){
+				methods: {
+					change(e) {
 						this.show = !this.show
 					},
-					change2(){
+					change2() {
 						this.areas.length = this.areas.length - 1
 						console.log(this.$vnode)
 					}
