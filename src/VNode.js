@@ -98,13 +98,15 @@ class VNode {
 
 	/**
 	 * 根据vnode创建真实节点
-	 * @param {Object} reactive reactive实例
+	 * 会覆盖vnode原来的el值
+	 * @param {Object} reactive Reactive实例
 	 */
 	createElement(reactive) {
 		let ele = null
 		//文本节点
 		if (this.nodeType === 3) {
 			var text = ''
+			//先获取含有lk:for的节点
 			var forNode = this.getForLoopVnode()
 			if (forNode) {
 				this.$reg.lastIndex = 0
@@ -115,9 +117,9 @@ class VNode {
 					text = this.text.replace(this.$reg, (match, key) => {
 						let keys = key.split('.')
 						if (keys[0] == item) {
-							return this.toString(this.parseKey(forNode.data,key))
+							return this.dataToString(this.parseKey(forNode.data,key))
 						} else if (keys[0] == index) {
-							return this.toString(forNode.data[index])
+							return this.dataToString(forNode.data[index])
 						} else {
 							return this.render(match, reactive)
 						}
@@ -161,10 +163,18 @@ class VNode {
 								this.insertAfter(copyInstance)
 							}
 							this.parent.createElement(reactive)
+						}else {//更新for循环数据
+							this.render(orgAttrValue, reactive,attr)
+							let list = this.compileAttrs[attr]
+							let listKeys = Object.keys(list)
+							let item = this.attrs['lk:for-item'] || 'item'
+							let index = this.attrs['lk:for-index'] || 'index'
+							this.data[item] = list[listKeys[this.data[index]]]
+							this.compileAttrs['lk:for-item'] = list[listKeys[this.compileAttrs['lk:for-index']]]
 						}
 					}else if(name == 'if'){//if语句
 						this.render(orgAttrValue,reactive,attr)
-					}else if(name == 'else'){
+					}else if(name == 'else'){//else语句
 						this.attrs[attr] = true;
 					}
 				} else if (attr.startsWith('@')) { //事件
@@ -173,28 +183,34 @@ class VNode {
 					ele.addEventListener(eventName, e => {
 						//方法含有括号
 						var params = []
-						attrValue = attrValue.replace(/\((.*?)\)/g,(match,key)=>{
-							if(key){
-								var keys = key.split(',')
-								keys.forEach((item,index)=>{
-									if(item == '$event'){
-										params.push(e)
-									}else {
-										var forNode = this.getForLoopVnode()
-										var data = undefined
-										if(forNode){
-											data = this.parseKey(forNode.data,item) || this.parseKey(reactive,item)
+						this.$reg.lastIndex = 0
+						if(this.$reg.test(attrValue)){
+							this.$reg.lastIndex = 0
+							attrValue = attrValue.replace(/\((.*?)\)/g,(match,key)=>{
+								if(key){
+									var keys = key.split(',')
+									keys.forEach((item,index)=>{
+										if(item == '$event'){
+											params.push(e)
 										}else {
-											data = this.parseKey(reactive,item)
+											var forNode = this.getForLoopVnode()
+											var data = undefined
+											if(forNode){
+												data = this.parseKey(forNode.data,item) || this.parseKey(reactive,item)
+											}else {
+												data = this.parseKey(reactive,item)
+											}
+											params.push(data)
 										}
-										params.push(data)
-									}
-								})
-							}else{
-								params.push(e)
-							}
-							return ''
-						})
+									})
+								}else{
+									params.push(e)
+								}
+								return ''
+							})
+						}else {
+							params.push(e)
+						}
 						let f = reactive[attrValue];
 						if(f){
 							f.apply(reactive, params)
@@ -206,6 +222,7 @@ class VNode {
 					})
 				}else {
 					var text = ''
+					//先获取含有lk:for的节点
 					var forNode = this.getForLoopVnode()
 					if (forNode) {
 						this.$reg.lastIndex = 0
@@ -216,11 +233,11 @@ class VNode {
 							text = orgAttrValue.replace(this.$reg, (match, key) => {
 								let keys = key.split('.')
 								if (keys[0] == item) {
-									this.compileAttrs[attr,this.parseKey(forNode.data,key)]
-									return this.toString(this.parseKey(forNode.data,key))
+									this.compileAttrs[attr] = this.parseKey(forNode.data,key)
+									return this.dataToString(this.parseKey(forNode.data,key))
 								} else if (keys[0] == index) {
-									this.compileAttrs[forNode.data[index]]
-									return this.toString(forNode.data[index])
+									this.compileAttrs[attr] = forNode.data[index]
+									return this.dataToString(forNode.data[index])
 								} else {
 									return this.render(match, reactive,attr)
 								}
@@ -254,7 +271,8 @@ class VNode {
 	}
 
 	/**
-	 * 根据该虚拟节点获取for循环根元素
+	 * 根据该虚拟节点获取for循环根元素，即含有lk:for属性的虚拟节点
+	 * 含有lk:for属性的节点为该节点或父节点或祖先节点
 	 */
 	getForLoopVnode() {
 		if(this.attrs['lk:for']){
@@ -323,13 +341,18 @@ class VNode {
 	 */
 	insertAfter(vnode) {
 		var index = this.getIndex()
-		this.parent.children.splice(index + 1, 0,vnode)
+		if(index>-1){
+			this.parent.children.splice(index + 1, 0,vnode)
+		}
 	}
 
 	/**
 	 * 获取vnode在parent中的序列位置
 	 */
 	getIndex() {
+		if(!this.parent){
+			return -1
+		}
 		var length = this.parent.children.length;
 		var index = -1;
 		for (var i = 0; i < length; i++) {
@@ -342,12 +365,12 @@ class VNode {
 	}
 
 	/**
-	 * 解析{{}}内容，进行html字符串渲染
-	 * @param {Object} template
-	 * @param {Object} reactive
-	 * @param {Object} attr 是否是为属性值解析，此值为属性
+	 * 解析{{}}格式的内容
+	 * @param {Object} template 字符串，形如{{user.name}}等
+	 * @param {Object} reactive Reactive实例
+	 * @param {Object} attr 如果此值存在，会在compileAttrs中存储一个数据
 	 */
-	render(template, reactive,attr) {
+	render(template,reactive,attr) {
 		this.$reg.lastIndex = 0;
 		if (!this.$reg.test(template)) {
 			return template;
@@ -359,16 +382,18 @@ class VNode {
 			if(attr){
 				this.compileAttrs[attr] = data;
 			}
-			return this.toString(data);
+			return this.dataToString(data);
 		})
 		return result;
 	}
 
 	/**
-	 * 解析key
+	 * 解析取值
+	 * @param {Object} obj 对象，解析的值将从obj中取出
+	 * @param {Object} keysStr 属性字符串 如 user.name 或者 user
 	 */
-	parseKey(obj, key) {
-		let keys = key.split('.')
+	parseKey(obj, keysStr) {
+		let keys = keysStr.split('.')
 		let result = ''
 		let temp = obj
 		keys.forEach(item => {
@@ -379,21 +404,25 @@ class VNode {
 	}
 	
 	/**
-	 * 转字符串
+	 * 实现任何值转字符串
 	 * @param {Object} data
 	 */
-	toString(data) {
+	dataToString(data) {
 		let dataStr = ''
-		if(typeof data == 'object'){
-			dataStr = JSON.stringify(data)
-		}else {
-			dataStr = data.toString()
+		try{
+			if(typeof data == 'object'){
+				dataStr = JSON.stringify(data)
+			}else {
+				dataStr = data.toString()
+			}
+		}catch(e){
+			dataStr = data
 		}
 		return dataStr
 	}
 	
 	/**
-	 * 含有lk:else的元素获取lk:if的元素
+	 * 根据含有lk:else属性的元素获取含有lk:if属性的元素
 	 */
 	getIfVnode(){
 		var index = this.getIndex()
