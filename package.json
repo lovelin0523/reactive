@@ -1,5 +1,5 @@
 {
-	"name": "reactive",
+	"name": "reactive3",
 	"version": "0.0.1",
 	"description": "一款简单的响应式MVVM框架",
 	"main": "dist/reactive.js",
