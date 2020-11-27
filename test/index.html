@@ -3,46 +3,13 @@
 	<head>
 		<meta charset="utf-8">
 		<title>Reactive测试</title>
-		<!-- <script src="../dist/reactive.js" type="text/javascript" charset="utf-8"></script> -->
+		<link rel="stylesheet" type="text/css" href="./index.css"/>
 	</head>
 	<body>
 		<div id="app">
-			<ul>
-				<li lk:for="{{areas}}" lk:for-index="i" lk:for-item="el">{{el}}{{url}}</li>
-			</ul>
-			<p>{{areas}}</p>
-			<p lk:if="{{show}}">{{areas}}</p>
-			<p lk:else>{{areas2}}</p>
-			<button @click="change">显示与隐藏控制</button>
-			<button type="button" @click="change2">更改对象数据</button>
-			<img src="{{url}}" />
+			<p lk:for="{{this.author}}" @click="{{this.change}}">{{this.item}}</p>
 		</div>
-		<script src="../dist/reactive.js" type="text/javascript" charset="utf-8"></script>
-		<script>
-			const app = Reactive.createApp({
-				data: {
-					url:'https://www.mvi-web.cn/resources/blogImages/image-1590754586312.png',
-					areas: ['北美洲', '大洋洲', '南美洲', '欧洲', '亚洲', '非洲', '南极洲'],
-					value:'Reactive',
-					show: true,
-					areas2: ['North America', 'Oceania', 'South America', 'European', 'Asia', 'Africa', 'Antarctica']
-				},
-				watch: {
-					show(newValue, oldValue) {
-						console.log(newValue, oldValue)
-					},
-
-				},
-				methods: {
-					change(e) {
-						this.show = !this.show
-					},
-					change2() {
-						this.areas.length = this.areas.length - 1
-						console.log(this.$vnode)
-					}
-				}
-			}).mount('#app')
-		</script>
+		<script src="../dist/reactive.js?v=1" type="text/javascript" charset="utf-8"></script>
+		<script src="./index.js" type="text/javascript" charset="utf-8"></script>
 	</body>
 </html>

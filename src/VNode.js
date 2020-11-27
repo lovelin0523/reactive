@@ -2,18 +2,330 @@
  * 虚拟dom对象
  */
 class VNode {
-	constructor(id, tag, el, children, text, data, parent, nodeType, attrs) {
-		this.id = id; //节点唯一键
-		this.tag = tag; //标签类型，DIV，SPAN，INPUT，#text
-		this.el = el; //对应的真实节点
-		this.children = children; //当前节点下的子节点
-		this.text = text; //当前虚拟节点的文本
-		this.data = data; //reactive关联的数据
-		this.parent = parent; //父级节点
-		this.nodeType = nodeType; //节点类型
-		this.attrs = attrs; //存放属性对象数组
-		this.$reg = /\{\{(.*?)\}\}/g; //匹配规则
-		this.compileAttrs = [];//编译转换后的属性对应值
+	constructor(id, tag, attrs, data, text, children, parent, isText, isComment) {
+		//唯一键
+		this.id = id;
+		//标签元素 基本标签 #text #comment
+		this.tag = tag;
+		//原始的属性-属性值对象
+		this.attrs = attrs;
+		//关联的响应式数据对象，其内的$attrs属性表示attrs经过渲染后的真实属性-属性值对象
+		this.data = data;
+		//当前虚拟节点的文本
+		this.text = text;
+		//当前节点下的子节点数组
+		this.children = children;
+		//父级节点
+		this.parent = parent;
+		//是否为文本节点
+		this.isText = isText;
+		//是否为注释节点
+		this.isComment = isComment;
+		//存储的节点
+		this.el = null;
+	}
+
+	/**
+	 * 判断当前节点与旧节点相比是否有变化
+	 * @param {Object} vnode
+	 */
+	isSame(vnode) {
+		if (this.tag !== vnode.tag) {
+			return false
+		}
+		if (this.text !== vnode.text) {
+			return false
+		}
+		if (this.isText !== vnode.isText) {
+			return false
+		}
+		if (this.isComment !== vnode.isComment) {
+			return false
+		}
+		if (!VNode.isEqual(this.attrs, vnode.attrs)) {
+			return false;
+		}
+		if (!VNode.isEqual(this.data, vnode.data)) {
+			return false;
+		}
+		return true
+	}
+
+	/**
+	 * 完全克隆当前节点
+	 */
+	fullClone(parent) {
+		let id = this.id;
+		let tag = this.tag;
+		let attrs = Object.assign({}, this.attrs);
+		let data = Object.assign({}, this.data);
+		let text = this.text;
+		let children = [];
+		let isText = this.isText;
+		let isComment = this.isComment;
+		var vnode = new VNode(id, tag, attrs, data, text, children, parent, isText, isComment);
+		vnode.el = this.el.cloneNode(true);
+		this.children.forEach((child, index) => {
+			var childNode = child.fullClone(vnode)
+			vnode.children.push(childNode)
+		})
+		return vnode
+	}
+
+	/**
+	 * 根据vnode创建真实节点
+	 * @param {Object} reactive
+	 */
+	createElement(reactive) {
+		let ele = null
+		//文本节点
+		if (this.isText) {
+			var text = ''
+			//先获取含有lk:for的节点
+			var forNode = this.getForLoopVnode()
+			if (forNode) {
+				VNode.$reg.lastIndex = 0
+				if (VNode.$reg.test(this.text)) {
+					text = this.render(this.text, forNode.data, undefined, reactive)
+				} else {
+					text = this.text
+				}
+			} else {
+				text = this.render(this.text, reactive)
+			}
+			ele = document.createTextNode(text)
+		} else if (this.isComment) { //注释
+			ele = document.createComment(this.text)
+		} else { //元素
+			ele = document.createElement(this.tag)
+			var attrs = Object.keys(this.attrs)
+			for (var i = 0; i < attrs.length; i++) {
+				var attr = attrs[i]
+				var attrValue = this.attrs[attr];
+				//表示特殊指令
+				if (attr.startsWith('lk:')) {
+					var name = attr.substr(3);
+					if (name === 'for') { //for循环
+						VNode.$reg.lastIndex = 0;
+						if (VNode.$reg.test(attrValue)) {
+							let list = VNode.parseExpression.call(reactive, RegExp.$1)
+							let listKeys = Object.keys(list)
+							let item = this.attrs['lk:for-item'] || 'item'
+							let index = this.attrs['lk:for-index'] || 'index'
+							this.attrs['lk:for'] = 'lk:for'
+							this.data['lk:for'] = list;
+							this.data[item] = list[listKeys[0]]
+							this.data[index] = 0
+							var arr = Object.keys(list)
+							for (var j = arr.length - 1; j > 0; j--) {
+								var copyInstance = this.clone(j, this.parent)
+								copyInstance.data[item] = list[listKeys[j]]
+								copyInstance.data[index] = j
+								this.insertAfter(copyInstance)
+							}
+							this.parent.createElement(reactive)
+						} else if (attrValue == 'lk:for') {
+							let list = this.data['lk:for'];
+							let listKeys = Object.keys(list)
+							let item = this.attrs['lk:for-item'] || 'item'
+							let index = this.attrs['lk:for-index'] || 'index'
+							this.data[item] = list[listKeys[this.data[index]]]
+						}
+					} else if (name == 'if') { //if语句
+						this.render(attrValue, reactive, attr)
+					} else if (name == 'else') { //else语句
+						this.attrs[attr] = true;
+					}
+				} else if (attr.startsWith('@')) { //事件
+					
+					var forNode = this.getForLoopVnode()
+					if(forNode){
+						this.render(attrValue,forNode.data,attr,reactive)
+					}else {
+						this.render(attrValue,reactive,attr)
+					}
+					var eventName = attr.substr(1)
+					ele.addEventListener(eventName, e => {
+						//方法含有括号
+						var f = this.data['$attrs'][attr];
+						if(typeof f != 'function'){
+							throw Error(`The event corresponding to ${attr} is not defined in methods`)
+						}
+						f.call(reactive,e)
+					})
+				} else {
+					var text = ''
+					//先获取含有lk:for的节点
+					var forNode = this.getForLoopVnode()
+					if (forNode) {
+						VNode.$reg.lastIndex = 0
+						if (VNode.$reg.test(attrValue)) {
+							text = this.render(attrValue, forNode.data, attr, reactive)
+						} else {
+							text = attrValue
+						}
+					} else {
+						text = this.render(attrValue, reactive, attr)
+					}
+					var realValue = this.data['$attrs'] ? this.data['$attrs'][attr] : text;
+					if (typeof realValue == 'boolean') {
+						if (realValue) {
+							ele.setAttribute(attr, attr)
+						} else {
+							ele.removeAttribute(attr)
+						}
+					} else {
+						ele.setAttribute(attr, text)
+					}
+				}
+			}
+		}
+		this.children.forEach(child => {
+			child.createElement(reactive)
+		})
+		this.el = ele;
+	}
+
+	/**
+	 * 将指定虚拟dom插入当前虚拟dom后
+	 * @param {Object} vnode
+	 */
+	insertAfter(vnode) {
+		let index = this.getSequenceInParent()
+		if (index > -1) {
+			this.parent.children.splice(index + 1, 0, vnode)
+			return true
+		} else {
+			return false
+		}
+	}
+
+	/**
+	 * 将指定虚拟dom插入当前虚拟dom之前
+	 */
+	insertBefore(vnode) {
+		let index = this.getSequenceInParent()
+		if (index > -1) {
+			this.parent.children.splice(index, 0, vnode)
+			return true
+		} else {
+			return false
+		}
+	}
+
+	/**
+	 * 同级复制vnode，id会变
+	 * @param {Object} index 序列值
+	 * @param {Object} parent 父元素
+	 * @param {Object} data 数据
+	 */
+	clone(index, parent, flag) {
+		//id, tag, attrs, data, text, children, parent, isText, isComment
+		let id = flag ? 'vn_' + (parent.id.substring(3)) + '_' + index : this.id + '_copy_' + index;
+		let tag = this.tag;
+		let attrs = Object.assign({}, this.attrs);
+		let data = Object.assign({}, this.data)
+		let text = this.text;
+		let isText = this.isText;
+		let isComment = this.isComment;
+		let children = [];
+		var vnode = new VNode(id, tag, attrs, data, text, children, parent, isText, isComment);
+		this.children.forEach((child, i) => {
+			var childNode = child.clone(i, vnode, true)
+			vnode.children.push(childNode)
+		})
+		return vnode
+	}
+
+	/**
+	 * 根据该虚拟节点获取for循环根元素，即含有lk:for属性的虚拟节点
+	 * 含有lk:for属性的节点为该节点或父节点或祖先节点
+	 */
+	getForLoopVnode() {
+		if (this.attrs['lk:for']) {
+			return this
+		}
+		if (!this.parent) {
+			return null
+		}
+		if (this.parent.attrs['lk:for']) {
+			return this.parent
+		}
+		return this.parent.getForLoopVnode()
+	}
+
+	/**
+	 * 获取当前虚拟节点在parent中的序列位置
+	 */
+	getSequenceInParent() {
+		//如果父节点不存在，返回-1
+		if (!this.parent) {
+			return -1
+		}
+		let length = this.parent.children.length;
+		let index = -1;
+		for (let i = 0; i < length; i++) {
+			if (this.parent.children[i].id == this.id) {
+				index = i;
+				break;
+			}
+		}
+		return index
+	}
+
+	/**
+	 * 解析{{}}格式的内容
+	 * @param {Object} template 字符串，形如{{user.name}}等
+	 * @param {Object} obj 属性所在对象
+	 * @param {Object} attr 绑定到data[$attrs]的属性名称
+	 * @param {Object} reactive
+	 */
+	render(template, obj, attr, reactive) {
+		VNode.$reg.lastIndex = 0;
+		if (!VNode.$reg.test(template)) {
+			return template;
+		}
+		VNode.$reg.lastIndex = 0;
+		const result = template.replace(VNode.$reg, (matched, key) => {
+			let data = VNode.parseExpression.call(obj, key)
+			if (data == undefined && reactive && !VNode.isEqual(reactive, obj)) {
+				data = VNode.parseExpression.call(reactive, key)
+			}
+			this.data[key] = data;
+			if (attr) {
+				if (!this.data['$attrs']) {
+					this.data['$attrs'] = {}
+				}
+				this.data['$attrs'][attr] = data;
+			}
+			return VNode.dataToString(data);
+		})
+		return result;
+	}
+
+	/**
+	 * 根据含有lk:else属性的元素获取含有lk:if属性的元素
+	 */
+	getIfVnode() {
+		var index = this.getSequenceInParent()
+		if (index == 0) {
+			return null
+		}
+		index = index - 1;
+		var vnode = this.parent.children[index]
+		if (vnode.attrs['lk:if']) {
+			return vnode
+		}
+		return vnode.getIfVnode()
+	}
+
+
+	/**
+	 * 解析表达式
+	 * @param {Object} expression 表达式
+	 */
+	static parseExpression(expression) {
+		return eval(expression)
 	}
 
 	/**
@@ -29,413 +341,63 @@ class VNode {
 	}
 
 	/**
-	 * 用于_vnode与$vnode比较或者其子孙元素比较，判断某id的虚拟节点是否发生了变化
-	 * @param {Object} vnode
+	 * 判断两个值是否完全相等，可判断对象
+	 * @param {Object} a
+	 * @param {Object} b
 	 */
-	equal(vnode) {
-		if(!(vnode instanceof VNode)){
-			return false
-		}
-		if (this.tag !== vnode.tag) {
-			return false
-		}
-		if (this.text !== vnode.text) {
-			return false
-		}
-		if (this.attrs.length !== vnode.attrs.length) {
+	static isEqual(a, b) {
+		if (!a || !b) {
 			return false;
 		}
-		if(this.compileAttrs.length !== vnode.compileAttrs.length){
+		if (typeof(a) !== typeof(b)) {
 			return false;
 		}
-		if (this.nodeType !== vnode.nodeType) {
-			return false;
-		}
-		let oldAttrs = Object.keys(vnode.attrs)
-		for (var i = 0; i < oldAttrs.length; i++) {
-			if (vnode.attrs[oldAttrs[i]] !== this.attrs[oldAttrs[i]]) {
-				return false
+		if (typeof a == 'object' && typeof b == 'object') {
+			let aProps = Object.getOwnPropertyNames(a);
+			let bProps = Object.getOwnPropertyNames(b);
+			if (aProps.length != bProps.length) {
+				return false;
 			}
-		}
-		let newAttrs = Object.keys(this.attrs)
-		for (var i = 0; i < newAttrs.length; i++) {
-			if (this.attrs[newAttrs[i]] !== vnode.attrs[newAttrs[i]]) {
-				return false
-			}
-		}
-		let oldData = Object.keys(vnode.data)
-		for (var i = 0; i < oldData.length; i++) {
-			if (vnode.data[oldData[i]] !== this.data[oldData[i]]) {
-				return false
-			}
-		}
-		let newData = Object.keys(this.data)
-		for (var i = 0; i < newData.length; i++) {
-			if (this.data[newData[i]] !== vnode.data[newData[i]]) {
-				return false
-			}
-		}
-		
-		if (this.children.length !== vnode.children.length) {
-			return false;
-		}
-		
-		let oldCompileAttrs = Object.keys(vnode.compileAttrs)
-		for (var i = 0; i < oldCompileAttrs.length; i++) {
-			if (vnode.compileAttrs[oldCompileAttrs[i]] !== this.compileAttrs[oldCompileAttrs[i]]) {
-				return false
-			}
-		}
-		let newCompileAttrs = Object.keys(this.compileAttrs)
-		for (var i = 0; i < newCompileAttrs.length; i++) {
-			if (this.compileAttrs[newCompileAttrs[i]] !== vnode.compileAttrs[newCompileAttrs[i]]) {
-				return false
-			}
-		}
-		
-		return true
-	}
-
-	/**
-	 * 根据vnode创建真实节点
-	 * 会覆盖vnode原来的el值
-	 * @param {Object} reactive Reactive实例
-	 */
-	createElement(reactive) {
-		let ele = null
-		//文本节点
-		if (this.nodeType === 3) {
-			var text = ''
-			//先获取含有lk:for的节点
-			var forNode = this.getForLoopVnode()
-			if (forNode) {
-				this.$reg.lastIndex = 0
-				if (this.$reg.test(this.text)) {
-					var item = forNode.attrs['lk:for-item'] || 'item'
-					var index = forNode.attrs['lk:for-index'] || 'index'
-					this.$reg.lastIndex = 0
-					text = this.text.replace(this.$reg, (match, key) => {
-						let keys = key.split('.')
-						if (keys[0] == item) {
-							return this.dataToString(this.parseKey(forNode.data,key))
-						} else if (keys[0] == index) {
-							return this.dataToString(forNode.data[index])
-						} else {
-							return this.render(match, reactive)
-						}
-					})
-				} else {
-					text = this.render(this.text, reactive)
-				}
-			} else {
-				text = this.render(this.text, reactive)
-			}
-			ele = document.createTextNode(text)
-		} else if(this.nodeType === 1){ //元素节点
-			ele = document.createElement(this.tag)
-			var attrs = Object.keys(this.attrs)
-			for (var i = 0; i < attrs.length; i++) {
-				var attr = attrs[i]
-				var orgAttrValue = this.attrs[attr];
-				//表示特殊指令
-				if (attr.startsWith('lk:')) {
-					var name = attr.substr(3);
-					if (name === 'for') { //for循环
-						if (orgAttrValue !== 'lk:for') {
-							this.render(orgAttrValue, reactive,attr)
-							let list = this.compileAttrs[attr]
-							let listKeys = Object.keys(list)
-							let item = this.attrs['lk:for-item'] || 'item'
-							let index = this.attrs['lk:for-index'] || 'index'
-							this.attrs['lk:for'] = 'lk:for'
-							this.data[item] = list[listKeys[0]]
-							this.data[index] = 0
-							this.compileAttrs['lk:for-item'] = list[listKeys[0]]
-							this.compileAttrs['lk:for-index'] = 0
-							var arr = Object.keys(list)
-							for (var j = arr.length - 1; j > 0; j--) {
-								var data = {}
-								data[item] = list[listKeys[j]]
-								data[index] = j
-								var copyInstance = this.clone(j, this.parent, data)
-								copyInstance.compileAttrs['lk:for-item'] = list[listKeys[j]]
-								copyInstance.compileAttrs['lk:for-index'] = j
-								this.insertAfter(copyInstance)
-							}
-							this.parent.createElement(reactive)
-						}else {//更新for循环数据
-							this.render(orgAttrValue, reactive,attr)
-							let list = this.compileAttrs[attr]
-							let listKeys = Object.keys(list)
-							let item = this.attrs['lk:for-item'] || 'item'
-							let index = this.attrs['lk:for-index'] || 'index'
-							this.data[item] = list[listKeys[this.data[index]]]
-							this.compileAttrs['lk:for-item'] = list[listKeys[this.compileAttrs['lk:for-index']]]
-						}
-					}else if(name == 'if'){//if语句
-						this.render(orgAttrValue,reactive,attr)
-					}else if(name == 'else'){//else语句
-						this.attrs[attr] = true;
-					}
-				} else if (attr.startsWith('@')) { //事件
-					var attrValue = this.render(orgAttrValue, reactive)
-					var eventName = attr.substr(1)
-					ele.addEventListener(eventName, e => {
-						//方法含有括号
-						var params = []
-						this.$reg.lastIndex = 0
-						if(this.$reg.test(attrValue)){
-							this.$reg.lastIndex = 0
-							attrValue = attrValue.replace(/\((.*?)\)/g,(match,key)=>{
-								if(key){
-									var keys = key.split(',')
-									keys.forEach((item,index)=>{
-										if(item == '$event'){
-											params.push(e)
-										}else {
-											var forNode = this.getForLoopVnode()
-											var data = undefined
-											if(forNode){
-												data = this.parseKey(forNode.data,item) || this.parseKey(reactive,item)
-											}else {
-												data = this.parseKey(reactive,item)
-											}
-											params.push(data)
-										}
-									})
-								}else{
-									params.push(e)
-								}
-								return ''
-							})
-						}else {
-							params.push(e)
-						}
-						let f = reactive[attrValue];
-						if(f){
-							f.apply(reactive, params)
-							//解决事件中无法监听数据bug
-							reactive._compare()
-						}else {
-							throw Error(`The "${attrValue}" method is not defined in methods`)
-						}
-					})
-				}else {
-					var text = ''
-					//先获取含有lk:for的节点
-					var forNode = this.getForLoopVnode()
-					if (forNode) {
-						this.$reg.lastIndex = 0
-						if (this.$reg.test(orgAttrValue)) {
-							var item = forNode.attrs['lk:for-item'] || 'item'
-							var index = forNode.attrs['lk:for-index'] || 'index'
-							this.$reg.lastIndex = 0
-							text = orgAttrValue.replace(this.$reg, (match, key) => {
-								let keys = key.split('.')
-								if (keys[0] == item) {
-									this.compileAttrs[attr] = this.parseKey(forNode.data,key)
-									return this.dataToString(this.parseKey(forNode.data,key))
-								} else if (keys[0] == index) {
-									this.compileAttrs[attr] = forNode.data[index]
-									return this.dataToString(forNode.data[index])
-								} else {
-									return this.render(match, reactive,attr)
-								}
-							})
-						} else {
-							text = this.render(orgAttrValue, reactive,attr)
-						}
+			let length = aProps.length;
+			for (let i = 0; i < length; i++) {
+				let propName = aProps[i];
+				let propA = a[propName];
+				let propB = b[propName];
+				if (typeof propA == 'object') {
+					if (this.isEqual(propA, propB)) {
+						return true;
 					} else {
-						text = this.render(orgAttrValue, reactive,attr)
+						return false;
 					}
-					//非字符串形式的属性值
-					let cAttrValue = this.compileAttrs[attr]
-					if(typeof cAttrValue == 'boolean'){
-						if(cAttrValue){
-							ele.setAttribute(attr,attr)
-						}else {
-							ele.removeAttribute(attr)
-						}
-					}else {
-						ele.setAttribute(attr, text)
-					}
+				} else if (propA !== propB) {
+					return false;
 				}
 			}
-		}else if(this.nodeType === 8){//注释节点
-			ele = document.createComment(this.text)
-		}
-		this.el = ele;
-		this.children.forEach(child => {
-			child.createElement(reactive)
-		})
-	}
-
-	/**
-	 * 根据该虚拟节点获取for循环根元素，即含有lk:for属性的虚拟节点
-	 * 含有lk:for属性的节点为该节点或父节点或祖先节点
-	 */
-	getForLoopVnode() {
-		if(this.attrs['lk:for']){
-			return this
-		}
-		if (!this.parent) {
-			return null
-		}
-		if (this.parent.attrs['lk:for']) {
-			return this.parent
-		}
-		return this.parent.getForLoopVnode()
-	}
-
-	/**
-	 * 同级复制vnode，id会变
-	 * @param {Object} index 序列值
-	 * @param {Object} parent 父元素
-	 * @param {Object} data 数据
-	 */
-	clone(index, parent, data) {
-		var newData = Object.assign({}, this.data)
-		if (data) {
-			newData = Object.assign(newData, data)
-		}
-		let id = this.id + '_copy_' + index;
-		let tag = this.tag;
-		let el = this.el.cloneNode(true);
-		let children = [];
-		let text = this.text;
-		let nodeType = this.nodeType;
-		let attrs = Object.assign({},this.attrs);
-		var vnode = new VNode(id, tag, el, children, text, newData, parent, nodeType, attrs);
-		vnode.compileAttrs = Object.assign({},this.compileAttrs)
-		this.children.forEach((child, index) => {
-			var childNode = child.clone(index, vnode)
-			vnode.children.push(childNode)
-		})
-		return vnode
-	}
-
-	/**
-	 * 完全复制
-	 */
-	fullClone(parent) {
-		let id = this.id;
-		let tag = this.tag;
-		let el = this.el.cloneNode();
-		let children = [];
-		let text = this.text;
-		let data = Object.assign({},this.data);
-		let nodeType = this.nodeType;
-		let attrs = Object.assign({},this.attrs);
-		var vnode = new VNode(id, tag, el, children, text, data, parent, nodeType, attrs);
-		vnode.compileAttrs = Object.assign({},this.compileAttrs)
-		this.children.forEach((child, index) => {
-			var childNode = child.fullClone(vnode)
-			vnode.children.push(childNode)
-		})
-		return vnode
-	}
-
-	/**
-	 * 将指定节点插入当前节点后
-	 * @param {Object} vnode
-	 */
-	insertAfter(vnode) {
-		var index = this.getIndex()
-		if(index>-1){
-			this.parent.children.splice(index + 1, 0,vnode)
+			return true;
+		} else {
+			return a === b;
 		}
 	}
 
-	/**
-	 * 获取vnode在parent中的序列位置
-	 */
-	getIndex() {
-		if(!this.parent){
-			return -1
-		}
-		var length = this.parent.children.length;
-		var index = -1;
-		for (var i = 0; i < length; i++) {
-			if (this.parent.children[i].id == this.id) {
-				index = i;
-				break;
-			}
-		}
-		return index
-	}
-
-	/**
-	 * 解析{{}}格式的内容
-	 * @param {Object} template 字符串，形如{{user.name}}等
-	 * @param {Object} reactive Reactive实例
-	 * @param {Object} attr 如果此值存在，会在compileAttrs中存储一个数据
-	 */
-	render(template,reactive,attr) {
-		this.$reg.lastIndex = 0;
-		if (!this.$reg.test(template)) {
-			return template;
-		}
-		this.$reg.lastIndex = 0;
-		const result = template.replace(this.$reg, (matched, key) => {
-			let data = this.parseKey(reactive, key)
-			this.data[key] = data;
-			if(attr){
-				this.compileAttrs[attr] = data;
-			}
-			return this.dataToString(data);
-		})
-		return result;
-	}
-
-	/**
-	 * 解析取值
-	 * @param {Object} obj 对象，解析的值将从obj中取出
-	 * @param {Object} keysStr 属性字符串 如 user.name 或者 user
-	 */
-	parseKey(obj, keysStr) {
-		let keys = keysStr.split('.')
-		let result = ''
-		let temp = obj
-		keys.forEach(item => {
-			temp = temp[item]
-			result = temp
-		})
-		return result
-	}
-	
 	/**
 	 * 实现任何值转字符串
 	 * @param {Object} data
 	 */
-	dataToString(data) {
+	static dataToString(data) {
 		let dataStr = ''
-		try{
-			if(typeof data == 'object'){
+		try {
+			if (typeof data == 'object') {
 				dataStr = JSON.stringify(data)
-			}else {
+			} else {
 				dataStr = data.toString()
 			}
-		}catch(e){
+		} catch (e) {
 			dataStr = data
 		}
 		return dataStr
 	}
-	
-	/**
-	 * 根据含有lk:else属性的元素获取含有lk:if属性的元素
-	 */
-	getIfVnode(){
-		var index = this.getIndex()
-		if(index == 0){
-			return null
-		}
-		index = index - 1;
-		var vnode = this.parent.children[index]
-		if(vnode.attrs['lk:if']){
-			return vnode
-		}
-		return vnode.getIfVnode()
-	}
 }
+
+VNode.$reg = /\{\{(.*?)\}\}/g
 
 module.exports = VNode

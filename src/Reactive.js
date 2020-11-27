@@ -1,4 +1,4 @@
-const VNode = require("./VNode")
+const VNode = require('./VNode.js')
 
 /**
  * 响应式MVVM对象
@@ -8,8 +8,6 @@ class Reactive {
 		this.$el = null;
 		this.$vnode = null;
 		this._vnode = null;
-		this.$data = null;
-		this.$methods = null;
 		this.$watch = null;
 		this.$beforeMount = null;
 		this.$mounted = null;
@@ -24,101 +22,118 @@ class Reactive {
 	 * @param {Object} selector
 	 */
 	mount(selector) {
-		if(typeof this.$beforeMount == 'function'){
+		if (typeof this.$beforeMount == 'function') {
 			this.$beforeMount.call(this)
 		}
 		//获取挂载元素
 		let el = document.querySelector(selector)
 		if (!el) {
-			el = document.body;
+			throw new Error(
+				'The argument to the mount method must be dom selectors and the DOM that is pointed to cannot be empty')
 		}
-		//创建虚拟dom并渲染真实数据
-		this.$vnode = this._updateVnodes(this._createVNode(el))
-		this._vnode = this.$vnode.fullClone()
-		this._vnode = this._updateVnodes(this._vnode)
-		//虚拟dom的el插入页面
-		el.parentNode.insertBefore(this._vnode.el,el)
-		//移除原来的
-		el.parentNode.removeChild(el)
-		//更新$el
-		this.$el = this._vnode.el;
-		if(typeof this.$mounted == 'function'){
+		//创建虚拟节点
+		this.$vnode = this._createVNode(el)
+		this._vnode = this._createVNode(el)
+		//创建真实dom
+		this._updateVnodes(this.$vnode)
+		this._updateVnodes(this._vnode)
+		el.parentNode.insertBefore(this._vnode.el, el);
+		el.remove();
+		if (typeof this.$mounted == 'function') {
 			this.$mounted.call(this)
 		}
 		return this;
 	}
-	
+
 	/**
-	 * 监听到数据更新对dom操作
+	 * 比对新旧节点数据
 	 */
-	_compare(){
-		//更新$vnode
-		this.$vnode = this._updateVnodes(this.$vnode)
-		//如果$vnode和_vnode不一样进行处理
-		if(!this.$vnode.equal(this._vnode)){
-			this._vnode = this.$vnode.fullClone()
-			this._vnode = this._updateVnodes(this._vnode)
-			this.$el.parentNode.insertBefore(this._vnode.el,this.$el)
-			this.$el.parentNode.removeChild(this.$el)
+	_compare() {
+		if (!this.$vnode.isSame(this._vnode)) {
+			let el = this._vnode.el;
+			this._vnode = this.$vnode.fullClone();
+			el.parentNode.insertBefore(this._vnode.el, el)
+			el.remove()
 			this.$el = this._vnode.el;
-		}else {
-			//比较子孙节点
-			this._compareChildren(this._vnode,this.$vnode)
+		} else {
+			this._compareChildren(this.$vnode, this._vnode)
 		}
 	}
-	
+
 	/**
-	 * 比对同一级子元素vnode
-	 * @param {Object} oldVnode
-	 * @param {Object} vnode
+	 * 比对子孙节点新旧数据
 	 */
-	_compareChildren(oldVnode,vnode){
-		for(var i = 0;i<oldVnode.children.length;i++){
-			for(var j = 0;j<vnode.children.length;j++){
-				var oVn = oldVnode.children[i]//当前旧节点
-				var nVn = vnode.children[j];//当前节点
-				if(!nVn.equal(oVn) && nVn.id === oVn.id){
-					let el =  nVn.el.cloneNode(true)
-					oldVnode.el.insertBefore(el,oVn.el)
-					oVn.el.remove()
-					oVn.el = el
-				}else {
-					this._compareChildren(oVn,nVn)
+	_compareChildren(vnode, oldVnode) {
+		let length = oldVnode.children.length;
+		var length2 = vnode.children.length;
+		for (var i = 0; i < length; i++) {
+			for (var j = 0; j < length2; j++) {
+				var oVn = oldVnode.children[i] //当前旧节点
+				var nVn = vnode.children[j]; //当前节点
+				if (!nVn.isSame(oVn) && nVn.id === oVn.id) {
+					if (oVn.attrs['lk:if']) {
+						if (oVn.data['$attrs']['lk:if']) { //旧节点原先已渲染
+							if (nVn.attrs['lk:if']) { //新结点
+								if (!nVn.data['$attrs']['lk:if']) { //新结点未渲染
+									let el = oVn.parent.el;
+									oVn.parent = nVn.parent.fullClone(oVn.parent.parent);
+									el.parentNode.insertBefore(oVn.parent.el, el)
+									el.remove()
+									return;
+								}
+							}
+						} else { //旧节点原先未渲染
+							if (nVn.attrs['lk:if']) { //新结点
+								if (nVn.data['$attrs']['lk:if']) { //新结点已渲染
+									let el = oVn.parent.el;
+									oVn.parent = nVn.parent.fullClone(oVn.parent.parent);
+									el.parentNode.insertBefore(oVn.parent.el, el)
+									el.remove()
+									return;
+								}
+							}
+						}
+					}
+					let el = oVn.el;
+					oVn = nVn.fullClone(oVn.parent)
+					el.parentNode.insertBefore(oVn.el, el)
+					el.remove()
+				} else {
+					this._compareChildren(nVn, oVn)
 				}
 			}
 		}
 	}
-	
+
 	/**
-	 * 更新指定虚拟dom树及其子元素
-	 * @param {Object} vnode
+	 * 更新虚拟节点数据
 	 */
-	_updateVnodes(vnode){
+	_updateVnodes(vnode) {
 		//根据虚拟dom递归创建真实节点以及其子节点（更新虚拟dom的el）
 		vnode.createElement(this)
 		//将虚拟dom的el填充到父元素的el中
-		let f = (item)=>{
-			item.children.forEach(child=>{
-				if(child.attrs['lk:if']){
-					let needCreate = child.compileAttrs['lk:if'];
-					if(needCreate){
+		let f = (item) => {
+			item.children.forEach(child => {
+				if (child.attrs['lk:if']) {
+					let needCreate = child.data['$attrs']['lk:if'];
+					if (needCreate) {
 						item.el.appendChild(child.el)
-					}else {
+					} else {
 						child.el.remove()
 					}
-				}else {
+				} else {
 					item.el.appendChild(child.el)
 				}
-				if(child.attrs['lk:else']){
+				if (child.attrs['lk:else']) {
 					var brotherVnode = child.getIfVnode()
-					if(brotherVnode){
-						let brotherNeedCreate = brotherVnode.compileAttrs['lk:if'];
-						if(brotherNeedCreate){
+					if (brotherVnode) {
+						let brotherNeedCreate = brotherVnode.data['$attrs']['lk:if'];
+						if (brotherNeedCreate) {
 							child.el.remove()
-						}else {
+						} else {
 							item.el.appendChild(child.el)
 						}
-					}else {
+					} else {
 						throw new Error('lk:else must be combined with lk:if')
 					}
 				}
@@ -126,26 +141,25 @@ class Reactive {
 			})
 		}
 		f(vnode)
-		return vnode
 	}
 
 	/**
 	 * 创建虚拟dom
-	 * @param {Object} $el
-	 * @param {Object} index
-	 * @param {Object} parent
 	 */
-	_createVNode($el,index,parent) {
-		let children = [];
-		let text = VNode.getNodeText($el)
-		let nodeType = $el.nodeType;
-		let data = {};
-		let tag = $el.nodeName;
+	_createVNode(el, index, parent) {
+		index = index ? `${index}` : 0
+		let id = parent ? 'vn_' + (parent.id.substring(3)) + '_' + index : 'vn_' + index;
+		let tag = el.nodeName;
 		let attrs = {};
-		if ($el.attributes) {
-			let length = $el.attributes.length;
+		let data = {};
+		let text = VNode.getNodeText(el)
+		let children = [];
+		let isText = (el.nodeType == 3);
+		let isComment = (el.nodeType == 8);
+		if (el.attributes) {
+			let length = el.attributes.length;
 			for (var i = 0; i < length; i++) {
-				let it = $el.attributes[i];
+				let it = el.attributes[i];
 				//属性名
 				let localName = it.localName;
 				//属性值
@@ -153,44 +167,29 @@ class Reactive {
 				attrs[localName] = value;
 			}
 		}
-		index = index?`${index}`:'0'
-		let id = parent?'vn_'+(parent.id.substring(3))+'_'+index:'vn_'+index;
-		let vnode = new VNode(id,tag, $el, children, text, data, parent, nodeType, attrs);
+
+		let vnode = new VNode(id, tag, attrs, data, text, children, parent, isText, isComment);
 		//获取子节点
-		let childs = $el.childNodes;
+		let childs = el.childNodes;
+		let childLength = childs.length;
 		// 深度优先算法
-		for (let i = 0; i < childs.length; i++) {
-			let childNode = this._createVNode(childs[i],i,vnode);
+		for (let i = 0; i < childLength; i++) {
+			let childNode = this._createVNode(childs[i], i, vnode);
 			vnode.children.push(childNode);
 		}
 		return vnode;
 	}
-	
+
 	/**
 	 * 监听数据变更进行处理
 	 * @param {Object} keys
 	 * @param {Object} key
 	 * @param {Object} value
 	 */
-	_observer(keys,key,value){
-		//方法发生变化
-		if(keys[0] == '$methods'){
-			//更新挂载在实例下的方法
-			Object.keys(this.$methods).forEach(key => {
-				this[key] = this.$methods[key]
-			})
-		}
-		//源数据发生变化
-		if(keys[0] == '$data'){
-			//更新挂载在实例下的数据
-			Object.keys(this.$data).forEach(key => {
-				this[key] = this.$data[key]
-			})
-		}
-		//dom变更
-		if(this.$vnode){
-			//dom更新
-			this._compare()
+	_observer(keys, key, value) {
+		if (this.$vnode) {
+			this._updateVnodes(this.$vnode)
+			this._compare();
 		}
 	}
 
@@ -214,17 +213,19 @@ class Reactive {
 		instance.$beforeCreate.call(instance)
 		//配置watch监听参数
 		instance.$watch = opt.watch;
-		//配置methods方法参数
-		instance.$methods = opt.methods;
-		//配置data数据参数
-		instance.$data = opt.data;
 		//将data直接挂载在实例上
-		Object.keys(instance.$data).forEach(key => {
-			instance[key] = instance.$data[key]
+		Object.keys(opt.data).forEach(key => {
+			if (instance[key]) {
+				throw new Error(`${key} is already defined in the instance`)
+			}
+			instance[key] = opt.data[key]
 		})
 		//将methods直接挂载在实例上
-		Object.keys(instance.$methods).forEach(key => {
-			instance[key] = instance.$methods[key]
+		Object.keys(opt.methods).forEach(key => {
+			if (instance[key]) {
+				throw new Error(`${key} is already defined in the instance`)
+			}
+			instance[key] = opt.methods[key]
 		})
 		//进行proxy代理
 		instance = Reactive._proxy(instance)
@@ -235,11 +236,15 @@ class Reactive {
 	}
 
 	/**
-	 * 获取不需要监听的属性数组
+	 * 判断reactive中的指定属性是否不需要监听
+	 * @param {Object} prop
+	 * 不需要监听返回true，需要监听返回false
 	 */
-	static _getUnObserveProperties() {
-		return ['$el', '$vnode','_vnode', '$watch','mount','_compare','_compareChildren','_updateVnodes','_createVNode','_observer',
-		'$beforeCreate','$created','$beforeMount','$mounted','$beforeUpdate','$updated']
+	static _UnObserverProperties(prop) {
+		return ['$el', '$vnode', '_vnode', '$watch', 'mount', '_observer', '$beforeCreate', '$created', '$beforeMount',
+			'$mounted',
+			'$beforeUpdate', '$updated'
+		].includes(prop)
 	}
 
 	/**
@@ -251,52 +256,53 @@ class Reactive {
 			data: {},
 			watch: {},
 			methods: {},
-			mounted:function(){},
-			beforeCreate:function(){},
-			created:function(){},
-			beforeMount:function(){},
-			mounted:function(){},
-			beforeUpdate:function(){},
-			updated:function(){}
+			beforeCreate: function() {},
+			created: function() {},
+			beforeMount: function() {},
+			mounted: function() {},
+			beforeUpdate: function() {},
+			updated: function() {}
 		}
 		if (typeof options == 'object' && options) {
 			if (typeof options.data == 'object' && options.data) {
 				opt.data = options.data;
 			}
 			if (typeof options.watch == 'object' && options.watch) {
-				Object.keys(options.watch).forEach(watchName=>{
-					if((typeof options.watch[watchName] != 'function') || !options.watch[watchName]){
-						throw new Error(`The definition of "${watchName}" in watch should be a method`)
+				Object.keys(options.watch).forEach(watchName => {
+					if ((typeof options.watch[watchName] != 'function') || !options.watch[watchName]) {
+						throw new Error(`The definition of "${watchName}" in watch should be a function`)
 					}
 				})
 				opt.watch = options.watch;
 			}
 			if (typeof options.methods == 'object' && options.methods) {
-				Object.keys(options.methods).forEach(methodName=>{
-					if((typeof options.methods[methodName] != 'function') || !options.methods[methodName]){
-						throw new Error(`The definition of "${methodName}" in methods should be a method`)
+				Object.keys(options.methods).forEach(methodName => {
+					if ((typeof options.methods[methodName] != 'function') || !options.methods[methodName]) {
+						throw new Error(`The definition of "${methodName}" in methods should be a function`)
 					}
 				})
 				opt.methods = options.methods;
 			}
-			if(typeof options.beforeMount == 'function' && options.beforeMount){
+			if (typeof options.beforeMount == 'function' && options.beforeMount) {
 				opt.beforeMount = options.beforeMount;
 			}
-			if(typeof options.mounted == 'function' && options.mounted){
+			if (typeof options.mounted == 'function' && options.mounted) {
 				opt.mounted = options.mounted;
 			}
-			if(typeof options.beforeCreate == 'function' && options.beforeCreate){
+			if (typeof options.beforeCreate == 'function' && options.beforeCreate) {
 				opt.beforeCreate = options.beforeCreate;
 			}
-			if(typeof options.created == 'function' && options.created){
+			if (typeof options.created == 'function' && options.created) {
 				opt.created = options.created;
 			}
-			if(typeof options.beforeUpdate == 'function' && options.beforeUpdate){
+			if (typeof options.beforeUpdate == 'function' && options.beforeUpdate) {
 				opt.beforeUpdate = options.beforeUpdate;
 			}
-			if(typeof options.updated == 'function' && options.updated){
+			if (typeof options.updated == 'function' && options.updated) {
 				opt.updated = options.updated;
 			}
+		} else {
+			throw new Error("The argument to the 'createApp' method must be an object")
 		}
 		return opt
 	}
@@ -311,7 +317,7 @@ class Reactive {
 				get: (target, key) => {
 					try {
 						var watchKey = parentKey ? parentKey + '.' + key : key;
-						if (Reactive._getUnObserveProperties().includes(key)) {
+						if (Reactive._UnObserverProperties(key)) {
 							return Reflect.get(target, key)
 						}
 						return new Proxy(target[key], watcher(watchKey))
@@ -320,7 +326,7 @@ class Reactive {
 					}
 				},
 				set: (target, key, value) => {
-					if (Reactive._getUnObserveProperties().includes(key)) {
+					if (Reactive._UnObserverProperties(key)) {
 						Reflect.set(target, key, value);
 						return true;
 					}
@@ -337,15 +343,15 @@ class Reactive {
 						return true;
 					}
 					//更新之前回调钩子函数
-					if(typeof instance.$beforeUpdate == 'function'){
-						instance.$beforeUpdate.call(instance,key,oldValue,value,(target instanceof Reactive)?undefined:target)
+					if (typeof instance.$beforeUpdate == 'function') {
+						instance.$beforeUpdate.call(instance, key, oldValue, value, (target instanceof Reactive) ? undefined : target)
 					}
 					//更新数据
 					Reflect.set(target, key, value);
 					//watch键名解析
 					var keys = Reactive._parseWatchKey(watchKey);
 					//监听
-					instance._observer(keys,key,value)
+					instance._observer(keys, key, value)
 					//回调
 					keys.forEach((item, index) => {
 						if (typeof(instance.$watch) == 'object' && instance.$watch[item] && typeof(instance.$watch[item]) ==
@@ -360,8 +366,8 @@ class Reactive {
 						}
 					})
 					//更新完毕回调调用钩子函数
-					if(typeof instance.$updated == 'function'){
-						instance.$updated.call(instance,key,oldValue,value,(target instanceof Reactive)?undefined:target)
+					if (typeof instance.$updated == 'function') {
+						instance.$updated.call(instance, key, oldValue, value, (target instanceof Reactive) ? undefined : target)
 					}
 					return true;
 				}

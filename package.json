@@ -15,10 +15,11 @@
 		"babel-loader": "^7.1.5",
 		"babel-preset-env": "^1.7.0"
 	},
-	"babel": { 
+	"babel": {
 		"presets": [
 			"env"
 		],
 		"plugins": []
-	}
+	},
+	"dependencies": {}
 }
