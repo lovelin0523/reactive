@@ -7,8 +7,13 @@
 	</head>
 	<body>
 		<div id="app">
-			<p lk:for="{{this.author}}" @click="{{this.change}}">{{this.item}}</p>
+			
+			<ul>
+				<li lk:for="{{this.components}}">{{this.item}}</li>
+			</ul>
+			<button lk:for="{{this.countries}}" @click="{{this.change(this.item,this.index)}}">{{this.item}}</button>
 		</div>
+		<script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.5.1/jquery.js"></script>
 		<script src="../dist/reactive.js?v=1" type="text/javascript" charset="utf-8"></script>
 		<script src="./index.js" type="text/javascript" charset="utf-8"></script>
 	</body>

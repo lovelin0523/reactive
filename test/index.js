@@ -1,6 +1,6 @@
 const app = Reactive.createApp({
 	data:{
-		show:true,
+		show:false,
 		number:10,
 		version:'1.0',
 		name:'reactive.js',
@@ -12,14 +12,17 @@ const app = Reactive.createApp({
 			graduateSchool:'安徽师范大学',
 			major:'软件工程'
 		},
-		countries:['中国','美国','英国','法国','德国','俄国','澳大利亚','日本','意大利']
+		countries:['中国','美国','英国','法国','德国','俄国','澳大利亚','日本','意大利'],
+		components:[1,2,3]
 	},
 	mounted(){
-		
+		setTimeout(()=>{
+			this.components.push(4)
+		},1000)
 	},
 	methods:{
-		change(e){
-			this.author.name = '缪海龙'
+		change(item,index){
+			console.log(item,index)
 		}
 	}
 }).mount('#app')

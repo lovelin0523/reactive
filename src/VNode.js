@@ -48,28 +48,10 @@ class VNode {
 		if (!VNode.isEqual(this.data, vnode.data)) {
 			return false;
 		}
+		if(this.children.length !== vnode.children.length){
+			return false;
+		}
 		return true
-	}
-
-	/**
-	 * 完全克隆当前节点
-	 */
-	fullClone(parent) {
-		let id = this.id;
-		let tag = this.tag;
-		let attrs = Object.assign({}, this.attrs);
-		let data = Object.assign({}, this.data);
-		let text = this.text;
-		let children = [];
-		let isText = this.isText;
-		let isComment = this.isComment;
-		var vnode = new VNode(id, tag, attrs, data, text, children, parent, isText, isComment);
-		vnode.el = this.el.cloneNode(true);
-		this.children.forEach((child, index) => {
-			var childNode = child.fullClone(vnode)
-			vnode.children.push(childNode)
-		})
-		return vnode
 	}
 
 	/**
@@ -110,40 +92,78 @@ class VNode {
 						if (VNode.$reg.test(attrValue)) {
 							let list = VNode.parseExpression.call(reactive, RegExp.$1)
 							let listKeys = Object.keys(list)
-							let item = this.attrs['lk:for-item'] || 'item'
-							let index = this.attrs['lk:for-index'] || 'index'
-							this.attrs['lk:for'] = 'lk:for'
-							this.data['lk:for'] = list;
-							this.data[item] = list[listKeys[0]]
-							this.data[index] = 0
-							var arr = Object.keys(list)
-							for (var j = arr.length - 1; j > 0; j--) {
-								var copyInstance = this.clone(j, this.parent)
-								copyInstance.data[item] = list[listKeys[j]]
-								copyInstance.data[index] = j
-								this.insertAfter(copyInstance)
+							if(listKeys.length > 0){
+								let item = this.attrs['lk:for-item'] || 'item'
+								let index = this.attrs['lk:for-index'] || 'index'
+								this.attrs['lk:for'] = 'lk:for'
+								this.data['lk:for'] = list;
+								this.data[item] = list[listKeys[0]]
+								this.data[index] = 0
+								for (var j = listKeys.length - 1; j > 0; j--) {
+									var copyInstance = this.clone(j, this.parent)
+									copyInstance.data[item] = list[listKeys[j]]
+									copyInstance.data[index] = j
+									this.insertAfter(copyInstance)
+								}
+								this.parent.createElement(reactive)
 							}
-							this.parent.createElement(reactive)
 						} else if (attrValue == 'lk:for') {
 							let list = this.data['lk:for'];
 							let listKeys = Object.keys(list)
 							let item = this.attrs['lk:for-item'] || 'item'
 							let index = this.attrs['lk:for-index'] || 'index'
-							this.data[item] = list[listKeys[this.data[index]]]
+							var value = list[listKeys[this.data[index]]];
+							this.data[item] = value;
 						}
 					} else if (name == 'if') { //if语句
-						this.render(attrValue, reactive, attr)
+						var forNode = this.getForLoopVnode()
+						if(forNode){
+							this.render(attrValue, forNode.data, attr,reactive)
+						}else {
+							this.render(attrValue,reactive,attr)
+						}
 					} else if (name == 'else') { //else语句
 						this.attrs[attr] = true;
+					} else if (name == 'show'){ //show语句
+						var forNode = this.getForLoopVnode()
+						if(forNode){
+							this.render(attrValue, forNode.data, attr,reactive)
+						}else {
+							this.render(attrValue,reactive,attr)
+						}
+						var isShow = this.data['$attrs'][attr];
+						if(!isShow){
+							ele.style.display = 'none'
+						}
 					}
 				} else if (attr.startsWith('@')) { //事件
-					
-					var forNode = this.getForLoopVnode()
-					if(forNode){
-						this.render(attrValue,forNode.data,attr,reactive)
+					var paramArray = []
+					VNode.$reg.lastIndex = 0;
+					if(VNode.$reg.test(attrValue)){
+						var realValue = RegExp.$1;
+						VNode.$methodReg.lastIndex = 0;
+						if(VNode.$methodReg.test(realValue)){
+							this.render('{{'+RegExp.$1+'}}',reactive,attr)
+							var startIndex = realValue.lastIndexOf('(');
+							var endIndex = realValue.lastIndexOf(')');
+							var paramsStr = realValue.substring(startIndex+1,endIndex);
+							paramArray = paramsStr.split(',');
+						}else {
+							this.render(attrValue,reactive,attr)
+						}
 					}else {
-						this.render(attrValue,reactive,attr)
+						throw new Error('events should use {{}} to wrap methods in methods')
 					}
+					var forNode = this.getForLoopVnode()
+					paramArray.forEach((param,index)=>{
+						if(param == '$event'){
+							this.data['$attrs'][attr+'.params['+index+']'] = '$event'
+						}else if(forNode){
+							this.render('{{'+param+'}}',forNode.data,attr+'.params['+index+']',reactive);
+						}else {
+							this.render('{{'+param+'}}',reactive,attr+'.params['+index+']')
+						}
+					})
 					var eventName = attr.substr(1)
 					ele.addEventListener(eventName, e => {
 						//方法含有括号
@@ -151,7 +171,21 @@ class VNode {
 						if(typeof f != 'function'){
 							throw Error(`The event corresponding to ${attr} is not defined in methods`)
 						}
-						f.call(reactive,e)
+						var params = []
+						Object.keys(this.data['$attrs']).forEach(item=>{
+							if(item.startsWith(attr+'.params')){
+								var value = this.data['$attrs'][item]
+								if(value == '$event'){
+									params.push(e)
+								}else {
+									params.push(value)
+								}
+							}
+						})
+						if(params.length == 0){
+							params.push(e)
+						}
+						f.apply(reactive,params)
 					})
 				} else {
 					var text = ''
@@ -399,5 +433,7 @@ class VNode {
 }
 
 VNode.$reg = /\{\{(.*?)\}\}/g
+
+VNode.$methodReg = /(.+)\(.*\)/g
 
 module.exports = VNode

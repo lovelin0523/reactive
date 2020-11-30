@@ -51,7 +51,7 @@ class Reactive {
 	_compare() {
 		if (!this.$vnode.isSame(this._vnode)) {
 			let el = this._vnode.el;
-			this._vnode = this.$vnode.fullClone();
+			this._updateVnodes(this._vnode);
 			el.parentNode.insertBefore(this._vnode.el, el)
 			el.remove()
 			this.$el = this._vnode.el;
@@ -76,7 +76,7 @@ class Reactive {
 							if (nVn.attrs['lk:if']) { //新结点
 								if (!nVn.data['$attrs']['lk:if']) { //新结点未渲染
 									let el = oVn.parent.el;
-									oVn.parent = nVn.parent.fullClone(oVn.parent.parent);
+									this._updateVnodes(oVn.parent);
 									el.parentNode.insertBefore(oVn.parent.el, el)
 									el.remove()
 									return;
@@ -86,7 +86,7 @@ class Reactive {
 							if (nVn.attrs['lk:if']) { //新结点
 								if (nVn.data['$attrs']['lk:if']) { //新结点已渲染
 									let el = oVn.parent.el;
-									oVn.parent = nVn.parent.fullClone(oVn.parent.parent);
+									this._updateVnodes(oVn.parent);
 									el.parentNode.insertBefore(oVn.parent.el, el)
 									el.remove()
 									return;
@@ -94,8 +94,25 @@ class Reactive {
 							}
 						}
 					}
+					var forNode = oVn.getForLoopVnode()
+					if(forNode){
+						let item = forNode.attrs['lk:for-item'] || 'item'
+						let index = forNode.attrs['lk:for-index'] || 'index'
+						//数据长度大于当前数据的序列，说明该虚拟dom应当被渲染
+						if(forNode.data['lk:for'].length > forNode.data[index]){
+							let el = forNode.parent.el;
+							this._updateVnodes(forNode.parent)
+							el.parentNode.insertBefore(forNode.parent.el,el)
+							el.remove()
+						}else {
+							let el = forNode.el;
+							this._updateVnodes(forNode.parent)
+							el.remove()
+						}
+						return;
+					}
 					let el = oVn.el;
-					oVn = nVn.fullClone(oVn.parent)
+					this._updateVnodes(oVn)
 					el.parentNode.insertBefore(oVn.el, el)
 					el.remove()
 				} else {
@@ -135,6 +152,17 @@ class Reactive {
 						}
 					} else {
 						throw new Error('lk:else must be combined with lk:if')
+					}
+				}
+				if(child.attrs['lk:for']){
+					var attrValue = child.attrs['lk:for'];
+					VNode.$reg.lastIndex = 0;
+					if(VNode.$reg.test(attrValue)){
+						let list = VNode.parseExpression.call(this, RegExp.$1)
+						let listKeys = Object.keys(list)
+						if(listKeys.length == 0){
+							child.el.remove();
+						}
 					}
 				}
 				f(child)
