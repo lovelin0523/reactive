@@ -23,6 +23,8 @@ class VNode {
 		this.isComment = isComment;
 		//存储的节点
 		this.el = null;
+		//复制的节点对象id
+		this.copyId = undefined;
 	}
 
 	/**
@@ -88,32 +90,33 @@ class VNode {
 				if (attr.startsWith('lk:')) {
 					var name = attr.substr(3);
 					if (name === 'for') { //for循环
-						VNode.$reg.lastIndex = 0;
-						if (VNode.$reg.test(attrValue)) {
-							let list = VNode.parseExpression.call(reactive, RegExp.$1)
+						var forNode = this.getForLoopVnode();
+						if(forNode){
+							this.render(attrValue,forNode.data,attr,reactive)
+						}else {
+							this.render(attrValue,reactive,attr)
+						}
+						//已经执行过for循环了
+						if(this.data['$:lk:for-complete']){
+							let list = this.data['$attrs'][attr];
 							let listKeys = Object.keys(list)
-							if(listKeys.length > 0){
+							var length = this.parent.data['lk:for-length']
+							//添加数据
+							if(listKeys.length != length){
+								this.compileForVnodes(reactive)
+							}else if(listKeys.length == length){//修改数据
 								let item = this.attrs['lk:for-item'] || 'item'
 								let index = this.attrs['lk:for-index'] || 'index'
-								this.attrs['lk:for'] = 'lk:for'
-								this.data['lk:for'] = list;
-								this.data[item] = list[listKeys[0]]
-								this.data[index] = 0
-								for (var j = listKeys.length - 1; j > 0; j--) {
-									var copyInstance = this.clone(j, this.parent)
-									copyInstance.data[item] = list[listKeys[j]]
-									copyInstance.data[index] = j
-									this.insertAfter(copyInstance)
-								}
-								this.parent.createElement(reactive)
+								var value = list[listKeys[this.data[index]]];
+								this.data[item] = value;
 							}
-						} else if (attrValue == 'lk:for') {
-							let list = this.data['lk:for'];
-							let listKeys = Object.keys(list)
-							let item = this.attrs['lk:for-item'] || 'item'
-							let index = this.attrs['lk:for-index'] || 'index'
-							var value = list[listKeys[this.data[index]]];
-							this.data[item] = value;
+						}else {//第一次执行for循环
+							VNode.$reg.lastIndex = 0;
+							if (VNode.$reg.test(attrValue)) {
+								//记录
+								this.data['$:lk:for-complete'] = true;
+								this.compileForVnodes(reactive);
+							}
 						}
 					} else if (name == 'if') { //if语句
 						var forNode = this.getForLoopVnode()
@@ -219,6 +222,82 @@ class VNode {
 		})
 		this.el = ele;
 	}
+	
+	/**
+	 * 渲染for循环vnode
+	 * @param {Object} reactive
+	 */
+	compileForVnodes(reactive){
+		var children = []
+		this.parent.children.forEach(child=>{
+			if(!child.copyId || child.copyId != this.id){
+				children.push(child)
+			}
+		})
+		this.parent.children = children;
+		let list = this.data['$attrs']['lk:for']
+		let listKeys = Object.keys(list)
+		this.parent.data['lk:for-length'] = listKeys.length;
+		if(listKeys.length > 0){
+			let item = this.attrs['lk:for-item'] || 'item'
+			let index = this.attrs['lk:for-index'] || 'index'
+			this.data[item] = list[listKeys[0]]
+			this.data[index] = 0
+			for (var j = listKeys.length - 1; j > 0; j--) {
+				var copyInstance = this.clone(j, this.parent)
+				copyInstance.data[item] = list[listKeys[j]]
+				copyInstance.data[index] = j
+				this.insertAfter(copyInstance)
+			}
+			this.parent.createElement(reactive)
+		}else {
+			var index = -1;
+			var length = this.parent.children.length;
+			for(var i = 0;i<length;i++){
+				if(this.parent.children[i].id == this.id){
+					index = i;
+					break;
+				}
+			}
+			this.parent.children.splice(index,1)
+		}
+	}
+	
+	/**
+	 * 完全克隆
+	 * 不包括元素el
+	 */
+	fullClone(parent){
+		let id = this.id;
+		let tag = this.tag;
+		let attrs = Object.assign({}, this.attrs);
+		let data = Object.assign({}, this.data)
+		let text = this.text;
+		let isText = this.isText;
+		let isComment = this.isComment;
+		let copyId = this.copyId;
+		let children = [];
+		var vnode = new VNode(id, tag, attrs, data, text, children, parent, isText, isComment)
+		this.children.forEach(child=>{
+			var childVnode = child.fullClone(vnode);
+			vnode.children.push(childVnode)
+		})
+		return vnode;
+	}
+	
+	
+	/**
+	 * 获取当前虚拟dom复制出来的最后一个节点
+	 */
+	getLastForVnode(){
+		var vnode = null;
+		this.parent.children.forEach(child=>{
+			if(child.copyId && child.copyId == this.id){
+				vnode = child
+			}
+		})
+		return vnode
+	}
 
 	/**
 	 * 将指定虚拟dom插入当前虚拟dom后
@@ -228,19 +307,6 @@ class VNode {
 		let index = this.getSequenceInParent()
 		if (index > -1) {
 			this.parent.children.splice(index + 1, 0, vnode)
-			return true
-		} else {
-			return false
-		}
-	}
-
-	/**
-	 * 将指定虚拟dom插入当前虚拟dom之前
-	 */
-	insertBefore(vnode) {
-		let index = this.getSequenceInParent()
-		if (index > -1) {
-			this.parent.children.splice(index, 0, vnode)
 			return true
 		} else {
 			return false
@@ -258,12 +324,20 @@ class VNode {
 		let id = flag ? 'vn_' + (parent.id.substring(3)) + '_' + index : this.id + '_copy_' + index;
 		let tag = this.tag;
 		let attrs = Object.assign({}, this.attrs);
-		let data = Object.assign({}, this.data)
+		let data = {}
+		if(this.data['$attrs']){
+			let attrs = Object.assign({},this.data['$attrs'])
+			data = Object.assign({},this.data);
+			data['$attrs'] = attrs;
+		}else {
+			data = Object.assign({},this.data);
+		}
 		let text = this.text;
 		let isText = this.isText;
 		let isComment = this.isComment;
 		let children = [];
 		var vnode = new VNode(id, tag, attrs, data, text, children, parent, isText, isComment);
+		vnode.copyId = this.id;
 		this.children.forEach((child, i) => {
 			var childNode = child.clone(i, vnode, true)
 			vnode.children.push(childNode)

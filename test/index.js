@@ -1,5 +1,6 @@
 const app = Reactive.createApp({
 	data:{
+		num:0,
 		show:false,
 		number:10,
 		version:'1.0',
@@ -16,13 +17,12 @@ const app = Reactive.createApp({
 		components:[1,2,3]
 	},
 	mounted(){
-		setTimeout(()=>{
-			this.components.push(4)
-		},1000)
+		
 	},
 	methods:{
-		change(item,index){
-			console.log(item,index)
+		change(){
+			this.number++;
+			//this.show = true;
 		}
 	}
 }).mount('#app')

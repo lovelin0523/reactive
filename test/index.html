@@ -7,13 +7,15 @@
 	</head>
 	<body>
 		<div id="app">
-			
-			<ul>
-				<li lk:for="{{this.components}}">{{this.item}}</li>
-			</ul>
-			<button lk:for="{{this.countries}}" @click="{{this.change(this.item,this.index)}}">{{this.item}}</button>
+			<div lk:if="{{this.number == 10}}">当前number为10</div>
+			<div lk:else>当前number不为10</div>
+			<div lk:show="{{this.show}}">显示的元素</div>
+			<div>
+				<div lk:for="{{this.countries}}">{{this.item}}</div>
+			</div>
+			<div lk:for="{{this.author}}">{{this.item}}</div>
+			<button @click="{{this.change}}">Button</button>
 		</div>
-		<script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.5.1/jquery.js"></script>
 		<script src="../dist/reactive.js?v=1" type="text/javascript" charset="utf-8"></script>
 		<script src="./index.js" type="text/javascript" charset="utf-8"></script>
 	</body>

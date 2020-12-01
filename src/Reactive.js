@@ -64,7 +64,7 @@ class Reactive {
 	 * 比对子孙节点新旧数据
 	 */
 	_compareChildren(vnode, oldVnode) {
-		let length = oldVnode.children.length;
+		var length = oldVnode.children.length;
 		var length2 = vnode.children.length;
 		for (var i = 0; i < length; i++) {
 			for (var j = 0; j < length2; j++) {
@@ -95,22 +95,14 @@ class Reactive {
 						}
 					}
 					var forNode = oVn.getForLoopVnode()
-					if(forNode){
-						let item = forNode.attrs['lk:for-item'] || 'item'
-						let index = forNode.attrs['lk:for-index'] || 'index'
-						//数据长度大于当前数据的序列，说明该虚拟dom应当被渲染
-						if(forNode.data['lk:for'].length > forNode.data[index]){
-							let el = forNode.parent.el;
-							this._updateVnodes(forNode.parent)
-							el.parentNode.insertBefore(forNode.parent.el,el)
-							el.remove()
-						}else {
-							let el = forNode.el;
-							this._updateVnodes(forNode.parent)
-							el.remove()
-						}
+					if (forNode) {
+						let el = forNode.parent.el;
+						this._updateVnodes(forNode.parent)
+						el.parentNode.insertBefore(forNode.parent.el, el)
+						el.remove()
 						return;
 					}
+
 					let el = oVn.el;
 					this._updateVnodes(oVn)
 					el.parentNode.insertBefore(oVn.el, el)
@@ -131,17 +123,43 @@ class Reactive {
 		//将虚拟dom的el填充到父元素的el中
 		let f = (item) => {
 			item.children.forEach(child => {
-				if (child.attrs['lk:if']) {
+				if (child.attrs['lk:for']) {
+					var list = child.data['$attrs']['lk:for'];
+					let listKeys = Object.keys(list)
+					if (listKeys.length == 0) {
+						child.el.remove();
+					} else {
+						if (child.attrs['lk:if']) {
+							let needCreate = child.data['$attrs']['lk:if'];
+							if (needCreate) {
+								item.el.appendChild(child.el)
+							} else {
+								child.el.remove()
+							}
+						} else if (child.attrs['lk:else']) {
+							var brotherVnode = child.getIfVnode()
+							if (brotherVnode) {
+								let brotherNeedCreate = brotherVnode.data['$attrs']['lk:if'];
+								if (brotherNeedCreate) {
+									child.el.remove()
+								} else {
+									item.el.appendChild(child.el)
+								}
+							} else {
+								throw new Error('lk:else must be combined with lk:if')
+							}
+						} else {
+							item.el.appendChild(child.el)
+						}
+					}
+				} else if (child.attrs['lk:if']) {
 					let needCreate = child.data['$attrs']['lk:if'];
 					if (needCreate) {
 						item.el.appendChild(child.el)
 					} else {
 						child.el.remove()
 					}
-				} else {
-					item.el.appendChild(child.el)
-				}
-				if (child.attrs['lk:else']) {
+				} else if (child.attrs['lk:else']) {
 					var brotherVnode = child.getIfVnode()
 					if (brotherVnode) {
 						let brotherNeedCreate = brotherVnode.data['$attrs']['lk:if'];
@@ -153,18 +171,10 @@ class Reactive {
 					} else {
 						throw new Error('lk:else must be combined with lk:if')
 					}
+				} else {
+					item.el.appendChild(child.el)
 				}
-				if(child.attrs['lk:for']){
-					var attrValue = child.attrs['lk:for'];
-					VNode.$reg.lastIndex = 0;
-					if(VNode.$reg.test(attrValue)){
-						let list = VNode.parseExpression.call(this, RegExp.$1)
-						let listKeys = Object.keys(list)
-						if(listKeys.length == 0){
-							child.el.remove();
-						}
-					}
-				}
+
 				f(child)
 			})
 		}
