@@ -15,6 +15,7 @@ class Reactive {
 		this.$created = null;
 		this.$updated = null;
 		this.$beforeUpdate = null;
+		this.$template = null;
 	}
 
 	/**
@@ -25,24 +26,74 @@ class Reactive {
 		if (typeof this.$beforeMount == 'function') {
 			this.$beforeMount.call(this)
 		}
-		//获取挂载元素
-		let el = document.querySelector(selector)
-		if (!el) {
-			throw new Error(
-				'The argument to the mount method must be dom selectors and the DOM that is pointed to cannot be empty')
+		let el = null;
+		//如果是模板
+		if((typeof this.$template == 'string' || typeof this.$template == 'function') && this.$template){
+			let template = '';
+			if(typeof this.$template == 'function'){
+				template = this.$template.apply(this)
+			}else {
+				template = this.$template;
+			}
+			let doms = this.$string2dom(template);
+			if(doms instanceof HTMLCollection){
+				throw new Error('template should be a string of one HTML tag')
+			}
+			el = doms;
+		}else {//挂载元素
+			//获取挂载元素
+			el = document.querySelector(selector)
+			if (!el) {
+				throw new Error(
+					'The argument to the mount method must be dom selectors and the DOM that is pointed to cannot be empty')
+			}
 		}
+		
 		//创建虚拟节点
 		this.$vnode = this._createVNode(el)
 		this._vnode = this._createVNode(el)
 		//创建真实dom
 		this._updateVnodes(this.$vnode)
 		this._updateVnodes(this._vnode)
-		el.parentNode.insertBefore(this._vnode.el, el);
-		el.remove();
+		//如果是模板，直接添加
+		if(this.$template){
+			document.body.appendChild(this._vnode.el)
+		}else {
+			el.parentNode.insertBefore(this._vnode.el, el);
+			el.remove();
+		}
+		//移除lk-cloak
+		this.$vnode.removeCloak();
+		this._vnode.removeCloak();
 		if (typeof this.$mounted == 'function') {
 			this.$mounted.call(this)
 		}
 		return this;
+	}
+	
+	/**
+	 * 根据字符串生成dom
+	 * @param {Object} str
+	 */
+	$string2dom(str){
+		if (typeof(str) != "string") {
+			str = "";
+		}
+		var parentEle = document.createElement("div");
+		parentEle.innerHTML = str;
+		if (parentEle.children.length == 1) {
+			return parentEle.children[0];
+		} else {
+			return parentEle.children;
+		}
+	}
+
+	/**
+	 * 强制更新视图
+	 */
+	$forceUpdate(){
+		this._updateVnodes(this.$vnode)
+		this._compare();
 	}
 
 	/**
@@ -240,6 +291,8 @@ class Reactive {
 		let instance = new Reactive()
 		//校验参数
 		let opt = Reactive._validator(options)
+		//配置template
+		instance.$template = opt.template;
 		//配置钩子函数
 		instance.$beforeCreate = opt.beforeCreate;
 		instance.$created = opt.created;
@@ -281,7 +334,7 @@ class Reactive {
 	static _UnObserverProperties(prop) {
 		return ['$el', '$vnode', '_vnode', '$watch', 'mount', '_observer', '$beforeCreate', '$created', '$beforeMount',
 			'$mounted',
-			'$beforeUpdate', '$updated'
+			'$beforeUpdate', '$updated','$template'
 		].includes(prop)
 	}
 
@@ -299,7 +352,8 @@ class Reactive {
 			beforeMount: function() {},
 			mounted: function() {},
 			beforeUpdate: function() {},
-			updated: function() {}
+			updated: function() {},
+			template:null
 		}
 		if (typeof options == 'object' && options) {
 			if (typeof options.data == 'object' && options.data) {
@@ -338,6 +392,9 @@ class Reactive {
 			}
 			if (typeof options.updated == 'function' && options.updated) {
 				opt.updated = options.updated;
+			}
+			if ((typeof options.template == 'string' || typeof options.template == 'function') && options.template){
+				opt.template = options.template;
 			}
 		} else {
 			throw new Error("The argument to the 'createApp' method must be an object")
@@ -435,6 +492,7 @@ class Reactive {
 		}
 		return result;
 	}
+
 }
 
 module.exports = Reactive

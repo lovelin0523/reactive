@@ -190,17 +190,14 @@ class VNode {
 						}
 						f.apply(reactive,params)
 					})
+				} else if(attr == 'lk-cloak'){
+					this.attrs[attr] = 'lk:cloak'
 				} else {
 					var text = ''
 					//先获取含有lk:for的节点
 					var forNode = this.getForLoopVnode()
 					if (forNode) {
-						VNode.$reg.lastIndex = 0
-						if (VNode.$reg.test(attrValue)) {
-							text = this.render(attrValue, forNode.data, attr, reactive)
-						} else {
-							text = attrValue
-						}
+						text = this.render(attrValue, forNode.data, attr, reactive)
 					} else {
 						text = this.render(attrValue, reactive, attr)
 					}
@@ -427,6 +424,17 @@ class VNode {
 		return vnode.getIfVnode()
 	}
 
+	/**
+	 * 移除cloak
+	 */
+	removeCloak(){
+		if(this.attrs['lk-cloak'] && this.el){
+			this.el.removeAttribute('lk-cloak')
+		}
+		this.children.forEach(child=>{
+			child.removeCloak();
+		})
+	}
 
 	/**
 	 * 解析表达式
