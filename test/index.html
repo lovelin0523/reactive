@@ -4,32 +4,10 @@
 		<meta charset="utf-8">
 		<title>Reactive测试</title>
 		<link rel="stylesheet" type="text/css" href="./index.css" />
-		<style>
-			[lk-cloak]{
-				display: none;
-			}
-		</style>
 	</head>
 	<body>
-		<div id="app" lk-cloak>
-			<div>
-				<span style="margin:0 10px;" lk:for="{{this.countries}}" @click="{{this.change($event,this.item,this.index)}}">{{this.item}}</span>
-			</div>
-			<div style="margin: 10px 0;">
-				<span style="margin:0 10px;" lk:for="{{this.countries}}" lk:for-index="i" lk:for-item="el">{{this.el}}{{this.i}}</span>
-			</div>
-			<div style="margin: 10px 0;">
-				<span style="margin:0 10px;" lk:for="{{this.author}}" lk:for-item="el">{{this.el}}</span>
-			</div>
-			<div id="el" lk:if="{{this.show}}">我在安徽</div>
-			<div lk:else>我在上海</div>
-			<div style="margin-bottom: 40px;">
-				<button type="button" @click="{{this.update}}">if/else控制</button>
-			</div>
-			<div lk:show="{{this.number % 2 == 0}}">元素显示与隐藏</div>
-			<div><button type="button" @click="{{this.update2}}">show控制</button></div>
-		</div>
-		<script src="../dist/reactive.js?v=1" type="text/javascript" charset="utf-8"></script>
-		<script src="./index.js" type="text/javascript" charset="utf-8"></script>
+		
 	</body>
+	<script src="../dist/reactive.js?v=1" type="text/javascript" charset="utf-8"></script>
+	<script src="./index.js" type="text/javascript" charset="utf-8"></script>
 </html>
