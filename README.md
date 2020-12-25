@@ -171,4 +171,4 @@ const app = Reactive.createApp({
 
 ---
 
-# 具体的可以到我的博客网站查看相关信息[https://www.mvi-web.cn](https://www.mvi-web.cn)
+# 具体的可以到我的博客网站查看相关信息：[Reactive 模仿Vue写的一个简化版+基础版的MVVM库](https://www.mvi-web.cn/article/23)
